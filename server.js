@@ -41,8 +41,8 @@ function startServer() {
   });
 
 
-  server.listen(8082);
-  console.log('Listening on port 8082');
+  server.listen(8080);
+  console.log('Listening on port 8080');
   
   app.get('/episodes', getEditingEpisode)
 
