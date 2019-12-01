@@ -30,7 +30,7 @@ function startServer() {
 
   app.use(express.static('public'));
   app.use(express.static('node_modules/quill/dist'));
-  app.use(cors)
+  app.use(cors({origin:true}))
   var server = http.createServer(app);
 
   // Connect any incoming WebSocket connection to ShareDB
@@ -44,7 +44,7 @@ function startServer() {
   server.listen(process.env.PORT || 80);
   console.log('Listening on port 80');
   
-  app.get('/episodes', getEditingEpisode)
+  app.get('/episodes', cors(), getEditingEpisode)
 
   function getEditingEpisode (request, response) {
     console.log('REQUESTED: ', request);
