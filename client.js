@@ -5,7 +5,8 @@ var Quill = require('quill');
 sharedb.types.register(richText.type);
 
 // Open WebSocket connection to ShareDB server
-var socket = new ReconnectingWebSocket('wss://' + window.location.host);
+// var socket = new ReconnectingWebSocket('wss://' + window.location.host);
+var socket = new ReconnectingWebSocket('ws://' + window.location.host);
 console.log('window location host: ', window.location.host);
 
 var connection = new sharedb.Connection(socket);
@@ -15,7 +16,8 @@ window.disconnect = function() {
   connection.close();
 };
 window.connect = function() {
-  var socket = new ReconnectingWebSocket('wss://' + window.location.host);
+  // var socket = new ReconnectingWebSocket('wss://' + window.location.host);
+  var socket = new ReconnectingWebSocket('ws://' + window.location.host);
   connection.bindToSocket(socket);
 };
 

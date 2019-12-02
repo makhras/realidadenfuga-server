@@ -8,19 +8,21 @@ var WebSocketJSONStream = require('@teamwork/websocket-json-stream');
 
 ShareDB.types.register(richText.type);
 var backend = new ShareDB();
-createDoc(startServer);
+
+startServer();
 
 // Create initial document then fire callback
-function createDoc(callback) {
+function createDoc(ep) {
   var connection = backend.connect();
-  var doc = connection.get('examples', 'richtext');
+  var doc = connection.get(ep.lang, ep.id);
   doc.fetch(function(err) {
     if (err) throw err;
     if (doc.type === null) {
-      doc.create([{insert: 'Hi!'}], 'rich-text', callback);
+      doc.create([{insert: 'Created '+ep.id+'!'}], 'rich-text');
       return;
+    }else {
+      console.log('DOC TYPE !== NULL')
     }
-    callback();
   });
 }
 
@@ -28,7 +30,7 @@ function startServer() {
   // Create a web server to serve files and listen to WebSocket connections
   var app = express();
 
-  app.use(express.static('public'));
+  app.use(express.static('public/pwa'));
   app.use(express.static('node_modules/quill/dist'));
   app.use(cors({origin:true}))
   var server = http.createServer(app);
@@ -43,12 +45,15 @@ function startServer() {
 
   server.listen(process.env.PORT || 80);
   console.log('Listening on port 80');
+  // server.listen(process.env.PORT || 8083);
+  // console.log('Listening on port 8083');
   
-  app.get('/episodes', cors(), getEditingEpisode)
+  app.get('/:lang/:id', cors(), getEditingEpisode)
 
   function getEditingEpisode (request, response) {
-    console.log('REQUESTED: ', request);
-    response.send('cool')
-    
+    // console.log('REQUESTED: ', request);
+    // console.log('ID: ', request.params.id);
+    createDoc({lang: request.params.lang, id: request.params.id})
+    response.send('Created ShareDB')
   }
 }
