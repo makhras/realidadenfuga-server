@@ -14,7 +14,7 @@
 importScripts("https://storage.googleapis.com/workbox-cdn/releases/4.3.1/workbox-sw.js");
 
 importScripts(
-  "/precache-manifest.cc25b336ab9dabe3b1112b963eadba1b.js"
+  "/precache-manifest.f4fe1c25199ccbeea9bdc4279c4a0160.js"
 );
 
 workbox.core.setCacheNameDetails({prefix: "studio.mente.media"});
