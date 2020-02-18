@@ -6,6 +6,7 @@ var Quill = require('quill');
 sharedb.types.register(richText.type);
 
 // Open WebSocket connection to ShareDB server
+// var socket = new ReconnectingWebSocket('wss://' + window.location.host);
 var socket = new ReconnectingWebSocket('ws://' + window.location.host);
 console.log('window location host: ', window.location.host);
 
@@ -16,6 +17,7 @@ window.disconnect = function() {
   connection.close();
 };
 window.connect = function() {
+  // var socket = new ReconnectingWebSocket('wss://' + window.location.host);
   var socket = new ReconnectingWebSocket('ws://' + window.location.host);
   connection.bindToSocket(socket);
 };
@@ -36,7 +38,1276 @@ doc.subscribe(function(err) {
   });
 });
 
-},{"quill":24,"reconnecting-websocket":25,"rich-text":30,"sharedb/lib/client":39}],2:[function(require,module,exports){
+},{"quill":25,"reconnecting-websocket":26,"rich-text":31,"sharedb/lib/client":40}],2:[function(require,module,exports){
+(function (process,global,setImmediate){
+/*!
+ * async
+ * https://github.com/caolan/async
+ *
+ * Copyright 2010-2014 Caolan McMahon
+ * Released under the MIT license
+ */
+(function () {
+
+    var async = {};
+    function noop() {}
+    function identity(v) {
+        return v;
+    }
+    function toBool(v) {
+        return !!v;
+    }
+    function notId(v) {
+        return !v;
+    }
+
+    // global on the server, window in the browser
+    var previous_async;
+
+    // Establish the root object, `window` (`self`) in the browser, `global`
+    // on the server, or `this` in some virtual machines. We use `self`
+    // instead of `window` for `WebWorker` support.
+    var root = typeof self === 'object' && self.self === self && self ||
+            typeof global === 'object' && global.global === global && global ||
+            this;
+
+    if (root != null) {
+        previous_async = root.async;
+    }
+
+    async.noConflict = function () {
+        root.async = previous_async;
+        return async;
+    };
+
+    function only_once(fn) {
+        return function() {
+            if (fn === null) throw new Error("Callback was already called.");
+            fn.apply(this, arguments);
+            fn = null;
+        };
+    }
+
+    function _once(fn) {
+        return function() {
+            if (fn === null) return;
+            fn.apply(this, arguments);
+            fn = null;
+        };
+    }
+
+    //// cross-browser compatiblity functions ////
+
+    var _toString = Object.prototype.toString;
+
+    var _isArray = Array.isArray || function (obj) {
+        return _toString.call(obj) === '[object Array]';
+    };
+
+    // Ported from underscore.js isObject
+    var _isObject = function(obj) {
+        var type = typeof obj;
+        return type === 'function' || type === 'object' && !!obj;
+    };
+
+    function _isArrayLike(arr) {
+        return _isArray(arr) || (
+            // has a positive integer length property
+            typeof arr.length === "number" &&
+            arr.length >= 0 &&
+            arr.length % 1 === 0
+        );
+    }
+
+    function _arrayEach(arr, iterator) {
+        var index = -1,
+            length = arr.length;
+
+        while (++index < length) {
+            iterator(arr[index], index, arr);
+        }
+    }
+
+    function _map(arr, iterator) {
+        var index = -1,
+            length = arr.length,
+            result = Array(length);
+
+        while (++index < length) {
+            result[index] = iterator(arr[index], index, arr);
+        }
+        return result;
+    }
+
+    function _range(count) {
+        return _map(Array(count), function (v, i) { return i; });
+    }
+
+    function _reduce(arr, iterator, memo) {
+        _arrayEach(arr, function (x, i, a) {
+            memo = iterator(memo, x, i, a);
+        });
+        return memo;
+    }
+
+    function _forEachOf(object, iterator) {
+        _arrayEach(_keys(object), function (key) {
+            iterator(object[key], key);
+        });
+    }
+
+    function _indexOf(arr, item) {
+        for (var i = 0; i < arr.length; i++) {
+            if (arr[i] === item) return i;
+        }
+        return -1;
+    }
+
+    var _keys = Object.keys || function (obj) {
+        var keys = [];
+        for (var k in obj) {
+            if (obj.hasOwnProperty(k)) {
+                keys.push(k);
+            }
+        }
+        return keys;
+    };
+
+    function _keyIterator(coll) {
+        var i = -1;
+        var len;
+        var keys;
+        if (_isArrayLike(coll)) {
+            len = coll.length;
+            return function next() {
+                i++;
+                return i < len ? i : null;
+            };
+        } else {
+            keys = _keys(coll);
+            len = keys.length;
+            return function next() {
+                i++;
+                return i < len ? keys[i] : null;
+            };
+        }
+    }
+
+    // Similar to ES6's rest param (http://ariya.ofilabs.com/2013/03/es6-and-rest-parameter.html)
+    // This accumulates the arguments passed into an array, after a given index.
+    // From underscore.js (https://github.com/jashkenas/underscore/pull/2140).
+    function _restParam(func, startIndex) {
+        startIndex = startIndex == null ? func.length - 1 : +startIndex;
+        return function() {
+            var length = Math.max(arguments.length - startIndex, 0);
+            var rest = Array(length);
+            for (var index = 0; index < length; index++) {
+                rest[index] = arguments[index + startIndex];
+            }
+            switch (startIndex) {
+                case 0: return func.call(this, rest);
+                case 1: return func.call(this, arguments[0], rest);
+            }
+            // Currently unused but handle cases outside of the switch statement:
+            // var args = Array(startIndex + 1);
+            // for (index = 0; index < startIndex; index++) {
+            //     args[index] = arguments[index];
+            // }
+            // args[startIndex] = rest;
+            // return func.apply(this, args);
+        };
+    }
+
+    function _withoutIndex(iterator) {
+        return function (value, index, callback) {
+            return iterator(value, callback);
+        };
+    }
+
+    //// exported async module functions ////
+
+    //// nextTick implementation with browser-compatible fallback ////
+
+    // capture the global reference to guard against fakeTimer mocks
+    var _setImmediate = typeof setImmediate === 'function' && setImmediate;
+
+    var _delay = _setImmediate ? function(fn) {
+        // not a direct alias for IE10 compatibility
+        _setImmediate(fn);
+    } : function(fn) {
+        setTimeout(fn, 0);
+    };
+
+    if (typeof process === 'object' && typeof process.nextTick === 'function') {
+        async.nextTick = process.nextTick;
+    } else {
+        async.nextTick = _delay;
+    }
+    async.setImmediate = _setImmediate ? _delay : async.nextTick;
+
+
+    async.forEach =
+    async.each = function (arr, iterator, callback) {
+        return async.eachOf(arr, _withoutIndex(iterator), callback);
+    };
+
+    async.forEachSeries =
+    async.eachSeries = function (arr, iterator, callback) {
+        return async.eachOfSeries(arr, _withoutIndex(iterator), callback);
+    };
+
+
+    async.forEachLimit =
+    async.eachLimit = function (arr, limit, iterator, callback) {
+        return _eachOfLimit(limit)(arr, _withoutIndex(iterator), callback);
+    };
+
+    async.forEachOf =
+    async.eachOf = function (object, iterator, callback) {
+        callback = _once(callback || noop);
+        object = object || [];
+
+        var iter = _keyIterator(object);
+        var key, completed = 0;
+
+        while ((key = iter()) != null) {
+            completed += 1;
+            iterator(object[key], key, only_once(done));
+        }
+
+        if (completed === 0) callback(null);
+
+        function done(err) {
+            completed--;
+            if (err) {
+                callback(err);
+            }
+            // Check key is null in case iterator isn't exhausted
+            // and done resolved synchronously.
+            else if (key === null && completed <= 0) {
+                callback(null);
+            }
+        }
+    };
+
+    async.forEachOfSeries =
+    async.eachOfSeries = function (obj, iterator, callback) {
+        callback = _once(callback || noop);
+        obj = obj || [];
+        var nextKey = _keyIterator(obj);
+        var key = nextKey();
+        function iterate() {
+            var sync = true;
+            if (key === null) {
+                return callback(null);
+            }
+            iterator(obj[key], key, only_once(function (err) {
+                if (err) {
+                    callback(err);
+                }
+                else {
+                    key = nextKey();
+                    if (key === null) {
+                        return callback(null);
+                    } else {
+                        if (sync) {
+                            async.setImmediate(iterate);
+                        } else {
+                            iterate();
+                        }
+                    }
+                }
+            }));
+            sync = false;
+        }
+        iterate();
+    };
+
+
+
+    async.forEachOfLimit =
+    async.eachOfLimit = function (obj, limit, iterator, callback) {
+        _eachOfLimit(limit)(obj, iterator, callback);
+    };
+
+    function _eachOfLimit(limit) {
+
+        return function (obj, iterator, callback) {
+            callback = _once(callback || noop);
+            obj = obj || [];
+            var nextKey = _keyIterator(obj);
+            if (limit <= 0) {
+                return callback(null);
+            }
+            var done = false;
+            var running = 0;
+            var errored = false;
+
+            (function replenish () {
+                if (done && running <= 0) {
+                    return callback(null);
+                }
+
+                while (running < limit && !errored) {
+                    var key = nextKey();
+                    if (key === null) {
+                        done = true;
+                        if (running <= 0) {
+                            callback(null);
+                        }
+                        return;
+                    }
+                    running += 1;
+                    iterator(obj[key], key, only_once(function (err) {
+                        running -= 1;
+                        if (err) {
+                            callback(err);
+                            errored = true;
+                        }
+                        else {
+                            replenish();
+                        }
+                    }));
+                }
+            })();
+        };
+    }
+
+
+    function doParallel(fn) {
+        return function (obj, iterator, callback) {
+            return fn(async.eachOf, obj, iterator, callback);
+        };
+    }
+    function doParallelLimit(fn) {
+        return function (obj, limit, iterator, callback) {
+            return fn(_eachOfLimit(limit), obj, iterator, callback);
+        };
+    }
+    function doSeries(fn) {
+        return function (obj, iterator, callback) {
+            return fn(async.eachOfSeries, obj, iterator, callback);
+        };
+    }
+
+    function _asyncMap(eachfn, arr, iterator, callback) {
+        callback = _once(callback || noop);
+        arr = arr || [];
+        var results = _isArrayLike(arr) ? [] : {};
+        eachfn(arr, function (value, index, callback) {
+            iterator(value, function (err, v) {
+                results[index] = v;
+                callback(err);
+            });
+        }, function (err) {
+            callback(err, results);
+        });
+    }
+
+    async.map = doParallel(_asyncMap);
+    async.mapSeries = doSeries(_asyncMap);
+    async.mapLimit = doParallelLimit(_asyncMap);
+
+    // reduce only has a series version, as doing reduce in parallel won't
+    // work in many situations.
+    async.inject =
+    async.foldl =
+    async.reduce = function (arr, memo, iterator, callback) {
+        async.eachOfSeries(arr, function (x, i, callback) {
+            iterator(memo, x, function (err, v) {
+                memo = v;
+                callback(err);
+            });
+        }, function (err) {
+            callback(err, memo);
+        });
+    };
+
+    async.foldr =
+    async.reduceRight = function (arr, memo, iterator, callback) {
+        var reversed = _map(arr, identity).reverse();
+        async.reduce(reversed, memo, iterator, callback);
+    };
+
+    async.transform = function (arr, memo, iterator, callback) {
+        if (arguments.length === 3) {
+            callback = iterator;
+            iterator = memo;
+            memo = _isArray(arr) ? [] : {};
+        }
+
+        async.eachOf(arr, function(v, k, cb) {
+            iterator(memo, v, k, cb);
+        }, function(err) {
+            callback(err, memo);
+        });
+    };
+
+    function _filter(eachfn, arr, iterator, callback) {
+        var results = [];
+        eachfn(arr, function (x, index, callback) {
+            iterator(x, function (v) {
+                if (v) {
+                    results.push({index: index, value: x});
+                }
+                callback();
+            });
+        }, function () {
+            callback(_map(results.sort(function (a, b) {
+                return a.index - b.index;
+            }), function (x) {
+                return x.value;
+            }));
+        });
+    }
+
+    async.select =
+    async.filter = doParallel(_filter);
+
+    async.selectLimit =
+    async.filterLimit = doParallelLimit(_filter);
+
+    async.selectSeries =
+    async.filterSeries = doSeries(_filter);
+
+    function _reject(eachfn, arr, iterator, callback) {
+        _filter(eachfn, arr, function(value, cb) {
+            iterator(value, function(v) {
+                cb(!v);
+            });
+        }, callback);
+    }
+    async.reject = doParallel(_reject);
+    async.rejectLimit = doParallelLimit(_reject);
+    async.rejectSeries = doSeries(_reject);
+
+    function _createTester(eachfn, check, getResult) {
+        return function(arr, limit, iterator, cb) {
+            function done() {
+                if (cb) cb(getResult(false, void 0));
+            }
+            function iteratee(x, _, callback) {
+                if (!cb) return callback();
+                iterator(x, function (v) {
+                    if (cb && check(v)) {
+                        cb(getResult(true, x));
+                        cb = iterator = false;
+                    }
+                    callback();
+                });
+            }
+            if (arguments.length > 3) {
+                eachfn(arr, limit, iteratee, done);
+            } else {
+                cb = iterator;
+                iterator = limit;
+                eachfn(arr, iteratee, done);
+            }
+        };
+    }
+
+    async.any =
+    async.some = _createTester(async.eachOf, toBool, identity);
+
+    async.someLimit = _createTester(async.eachOfLimit, toBool, identity);
+
+    async.all =
+    async.every = _createTester(async.eachOf, notId, notId);
+
+    async.everyLimit = _createTester(async.eachOfLimit, notId, notId);
+
+    function _findGetResult(v, x) {
+        return x;
+    }
+    async.detect = _createTester(async.eachOf, identity, _findGetResult);
+    async.detectSeries = _createTester(async.eachOfSeries, identity, _findGetResult);
+    async.detectLimit = _createTester(async.eachOfLimit, identity, _findGetResult);
+
+    async.sortBy = function (arr, iterator, callback) {
+        async.map(arr, function (x, callback) {
+            iterator(x, function (err, criteria) {
+                if (err) {
+                    callback(err);
+                }
+                else {
+                    callback(null, {value: x, criteria: criteria});
+                }
+            });
+        }, function (err, results) {
+            if (err) {
+                return callback(err);
+            }
+            else {
+                callback(null, _map(results.sort(comparator), function (x) {
+                    return x.value;
+                }));
+            }
+
+        });
+
+        function comparator(left, right) {
+            var a = left.criteria, b = right.criteria;
+            return a < b ? -1 : a > b ? 1 : 0;
+        }
+    };
+
+    async.auto = function (tasks, concurrency, callback) {
+        if (typeof arguments[1] === 'function') {
+            // concurrency is optional, shift the args.
+            callback = concurrency;
+            concurrency = null;
+        }
+        callback = _once(callback || noop);
+        var keys = _keys(tasks);
+        var remainingTasks = keys.length;
+        if (!remainingTasks) {
+            return callback(null);
+        }
+        if (!concurrency) {
+            concurrency = remainingTasks;
+        }
+
+        var results = {};
+        var runningTasks = 0;
+
+        var hasError = false;
+
+        var listeners = [];
+        function addListener(fn) {
+            listeners.unshift(fn);
+        }
+        function removeListener(fn) {
+            var idx = _indexOf(listeners, fn);
+            if (idx >= 0) listeners.splice(idx, 1);
+        }
+        function taskComplete() {
+            remainingTasks--;
+            _arrayEach(listeners.slice(0), function (fn) {
+                fn();
+            });
+        }
+
+        addListener(function () {
+            if (!remainingTasks) {
+                callback(null, results);
+            }
+        });
+
+        _arrayEach(keys, function (k) {
+            if (hasError) return;
+            var task = _isArray(tasks[k]) ? tasks[k]: [tasks[k]];
+            var taskCallback = _restParam(function(err, args) {
+                runningTasks--;
+                if (args.length <= 1) {
+                    args = args[0];
+                }
+                if (err) {
+                    var safeResults = {};
+                    _forEachOf(results, function(val, rkey) {
+                        safeResults[rkey] = val;
+                    });
+                    safeResults[k] = args;
+                    hasError = true;
+
+                    callback(err, safeResults);
+                }
+                else {
+                    results[k] = args;
+                    async.setImmediate(taskComplete);
+                }
+            });
+            var requires = task.slice(0, task.length - 1);
+            // prevent dead-locks
+            var len = requires.length;
+            var dep;
+            while (len--) {
+                if (!(dep = tasks[requires[len]])) {
+                    throw new Error('Has nonexistent dependency in ' + requires.join(', '));
+                }
+                if (_isArray(dep) && _indexOf(dep, k) >= 0) {
+                    throw new Error('Has cyclic dependencies');
+                }
+            }
+            function ready() {
+                return runningTasks < concurrency && _reduce(requires, function (a, x) {
+                    return (a && results.hasOwnProperty(x));
+                }, true) && !results.hasOwnProperty(k);
+            }
+            if (ready()) {
+                runningTasks++;
+                task[task.length - 1](taskCallback, results);
+            }
+            else {
+                addListener(listener);
+            }
+            function listener() {
+                if (ready()) {
+                    runningTasks++;
+                    removeListener(listener);
+                    task[task.length - 1](taskCallback, results);
+                }
+            }
+        });
+    };
+
+
+
+    async.retry = function(times, task, callback) {
+        var DEFAULT_TIMES = 5;
+        var DEFAULT_INTERVAL = 0;
+
+        var attempts = [];
+
+        var opts = {
+            times: DEFAULT_TIMES,
+            interval: DEFAULT_INTERVAL
+        };
+
+        function parseTimes(acc, t){
+            if(typeof t === 'number'){
+                acc.times = parseInt(t, 10) || DEFAULT_TIMES;
+            } else if(typeof t === 'object'){
+                acc.times = parseInt(t.times, 10) || DEFAULT_TIMES;
+                acc.interval = parseInt(t.interval, 10) || DEFAULT_INTERVAL;
+            } else {
+                throw new Error('Unsupported argument type for \'times\': ' + typeof t);
+            }
+        }
+
+        var length = arguments.length;
+        if (length < 1 || length > 3) {
+            throw new Error('Invalid arguments - must be either (task), (task, callback), (times, task) or (times, task, callback)');
+        } else if (length <= 2 && typeof times === 'function') {
+            callback = task;
+            task = times;
+        }
+        if (typeof times !== 'function') {
+            parseTimes(opts, times);
+        }
+        opts.callback = callback;
+        opts.task = task;
+
+        function wrappedTask(wrappedCallback, wrappedResults) {
+            function retryAttempt(task, finalAttempt) {
+                return function(seriesCallback) {
+                    task(function(err, result){
+                        seriesCallback(!err || finalAttempt, {err: err, result: result});
+                    }, wrappedResults);
+                };
+            }
+
+            function retryInterval(interval){
+                return function(seriesCallback){
+                    setTimeout(function(){
+                        seriesCallback(null);
+                    }, interval);
+                };
+            }
+
+            while (opts.times) {
+
+                var finalAttempt = !(opts.times-=1);
+                attempts.push(retryAttempt(opts.task, finalAttempt));
+                if(!finalAttempt && opts.interval > 0){
+                    attempts.push(retryInterval(opts.interval));
+                }
+            }
+
+            async.series(attempts, function(done, data){
+                data = data[data.length - 1];
+                (wrappedCallback || opts.callback)(data.err, data.result);
+            });
+        }
+
+        // If a callback is passed, run this as a controll flow
+        return opts.callback ? wrappedTask() : wrappedTask;
+    };
+
+    async.waterfall = function (tasks, callback) {
+        callback = _once(callback || noop);
+        if (!_isArray(tasks)) {
+            var err = new Error('First argument to waterfall must be an array of functions');
+            return callback(err);
+        }
+        if (!tasks.length) {
+            return callback();
+        }
+        function wrapIterator(iterator) {
+            return _restParam(function (err, args) {
+                if (err) {
+                    callback.apply(null, [err].concat(args));
+                }
+                else {
+                    var next = iterator.next();
+                    if (next) {
+                        args.push(wrapIterator(next));
+                    }
+                    else {
+                        args.push(callback);
+                    }
+                    ensureAsync(iterator).apply(null, args);
+                }
+            });
+        }
+        wrapIterator(async.iterator(tasks))();
+    };
+
+    function _parallel(eachfn, tasks, callback) {
+        callback = callback || noop;
+        var results = _isArrayLike(tasks) ? [] : {};
+
+        eachfn(tasks, function (task, key, callback) {
+            task(_restParam(function (err, args) {
+                if (args.length <= 1) {
+                    args = args[0];
+                }
+                results[key] = args;
+                callback(err);
+            }));
+        }, function (err) {
+            callback(err, results);
+        });
+    }
+
+    async.parallel = function (tasks, callback) {
+        _parallel(async.eachOf, tasks, callback);
+    };
+
+    async.parallelLimit = function(tasks, limit, callback) {
+        _parallel(_eachOfLimit(limit), tasks, callback);
+    };
+
+    async.series = function(tasks, callback) {
+        _parallel(async.eachOfSeries, tasks, callback);
+    };
+
+    async.iterator = function (tasks) {
+        function makeCallback(index) {
+            function fn() {
+                if (tasks.length) {
+                    tasks[index].apply(null, arguments);
+                }
+                return fn.next();
+            }
+            fn.next = function () {
+                return (index < tasks.length - 1) ? makeCallback(index + 1): null;
+            };
+            return fn;
+        }
+        return makeCallback(0);
+    };
+
+    async.apply = _restParam(function (fn, args) {
+        return _restParam(function (callArgs) {
+            return fn.apply(
+                null, args.concat(callArgs)
+            );
+        });
+    });
+
+    function _concat(eachfn, arr, fn, callback) {
+        var result = [];
+        eachfn(arr, function (x, index, cb) {
+            fn(x, function (err, y) {
+                result = result.concat(y || []);
+                cb(err);
+            });
+        }, function (err) {
+            callback(err, result);
+        });
+    }
+    async.concat = doParallel(_concat);
+    async.concatSeries = doSeries(_concat);
+
+    async.whilst = function (test, iterator, callback) {
+        callback = callback || noop;
+        if (test()) {
+            var next = _restParam(function(err, args) {
+                if (err) {
+                    callback(err);
+                } else if (test.apply(this, args)) {
+                    iterator(next);
+                } else {
+                    callback.apply(null, [null].concat(args));
+                }
+            });
+            iterator(next);
+        } else {
+            callback(null);
+        }
+    };
+
+    async.doWhilst = function (iterator, test, callback) {
+        var calls = 0;
+        return async.whilst(function() {
+            return ++calls <= 1 || test.apply(this, arguments);
+        }, iterator, callback);
+    };
+
+    async.until = function (test, iterator, callback) {
+        return async.whilst(function() {
+            return !test.apply(this, arguments);
+        }, iterator, callback);
+    };
+
+    async.doUntil = function (iterator, test, callback) {
+        return async.doWhilst(iterator, function() {
+            return !test.apply(this, arguments);
+        }, callback);
+    };
+
+    async.during = function (test, iterator, callback) {
+        callback = callback || noop;
+
+        var next = _restParam(function(err, args) {
+            if (err) {
+                callback(err);
+            } else {
+                args.push(check);
+                test.apply(this, args);
+            }
+        });
+
+        var check = function(err, truth) {
+            if (err) {
+                callback(err);
+            } else if (truth) {
+                iterator(next);
+            } else {
+                callback(null);
+            }
+        };
+
+        test(check);
+    };
+
+    async.doDuring = function (iterator, test, callback) {
+        var calls = 0;
+        async.during(function(next) {
+            if (calls++ < 1) {
+                next(null, true);
+            } else {
+                test.apply(this, arguments);
+            }
+        }, iterator, callback);
+    };
+
+    function _queue(worker, concurrency, payload) {
+        if (concurrency == null) {
+            concurrency = 1;
+        }
+        else if(concurrency === 0) {
+            throw new Error('Concurrency must not be zero');
+        }
+        function _insert(q, data, pos, callback) {
+            if (callback != null && typeof callback !== "function") {
+                throw new Error("task callback must be a function");
+            }
+            q.started = true;
+            if (!_isArray(data)) {
+                data = [data];
+            }
+            if(data.length === 0 && q.idle()) {
+                // call drain immediately if there are no tasks
+                return async.setImmediate(function() {
+                    q.drain();
+                });
+            }
+            _arrayEach(data, function(task) {
+                var item = {
+                    data: task,
+                    callback: callback || noop
+                };
+
+                if (pos) {
+                    q.tasks.unshift(item);
+                } else {
+                    q.tasks.push(item);
+                }
+
+                if (q.tasks.length === q.concurrency) {
+                    q.saturated();
+                }
+            });
+            async.setImmediate(q.process);
+        }
+        function _next(q, tasks) {
+            return function(){
+                workers -= 1;
+
+                var removed = false;
+                var args = arguments;
+                _arrayEach(tasks, function (task) {
+                    _arrayEach(workersList, function (worker, index) {
+                        if (worker === task && !removed) {
+                            workersList.splice(index, 1);
+                            removed = true;
+                        }
+                    });
+
+                    task.callback.apply(task, args);
+                });
+                if (q.tasks.length + workers === 0) {
+                    q.drain();
+                }
+                q.process();
+            };
+        }
+
+        var workers = 0;
+        var workersList = [];
+        var q = {
+            tasks: [],
+            concurrency: concurrency,
+            payload: payload,
+            saturated: noop,
+            empty: noop,
+            drain: noop,
+            started: false,
+            paused: false,
+            push: function (data, callback) {
+                _insert(q, data, false, callback);
+            },
+            kill: function () {
+                q.drain = noop;
+                q.tasks = [];
+            },
+            unshift: function (data, callback) {
+                _insert(q, data, true, callback);
+            },
+            process: function () {
+                while(!q.paused && workers < q.concurrency && q.tasks.length){
+
+                    var tasks = q.payload ?
+                        q.tasks.splice(0, q.payload) :
+                        q.tasks.splice(0, q.tasks.length);
+
+                    var data = _map(tasks, function (task) {
+                        return task.data;
+                    });
+
+                    if (q.tasks.length === 0) {
+                        q.empty();
+                    }
+                    workers += 1;
+                    workersList.push(tasks[0]);
+                    var cb = only_once(_next(q, tasks));
+                    worker(data, cb);
+                }
+            },
+            length: function () {
+                return q.tasks.length;
+            },
+            running: function () {
+                return workers;
+            },
+            workersList: function () {
+                return workersList;
+            },
+            idle: function() {
+                return q.tasks.length + workers === 0;
+            },
+            pause: function () {
+                q.paused = true;
+            },
+            resume: function () {
+                if (q.paused === false) { return; }
+                q.paused = false;
+                var resumeCount = Math.min(q.concurrency, q.tasks.length);
+                // Need to call q.process once per concurrent
+                // worker to preserve full concurrency after pause
+                for (var w = 1; w <= resumeCount; w++) {
+                    async.setImmediate(q.process);
+                }
+            }
+        };
+        return q;
+    }
+
+    async.queue = function (worker, concurrency) {
+        var q = _queue(function (items, cb) {
+            worker(items[0], cb);
+        }, concurrency, 1);
+
+        return q;
+    };
+
+    async.priorityQueue = function (worker, concurrency) {
+
+        function _compareTasks(a, b){
+            return a.priority - b.priority;
+        }
+
+        function _binarySearch(sequence, item, compare) {
+            var beg = -1,
+                end = sequence.length - 1;
+            while (beg < end) {
+                var mid = beg + ((end - beg + 1) >>> 1);
+                if (compare(item, sequence[mid]) >= 0) {
+                    beg = mid;
+                } else {
+                    end = mid - 1;
+                }
+            }
+            return beg;
+        }
+
+        function _insert(q, data, priority, callback) {
+            if (callback != null && typeof callback !== "function") {
+                throw new Error("task callback must be a function");
+            }
+            q.started = true;
+            if (!_isArray(data)) {
+                data = [data];
+            }
+            if(data.length === 0) {
+                // call drain immediately if there are no tasks
+                return async.setImmediate(function() {
+                    q.drain();
+                });
+            }
+            _arrayEach(data, function(task) {
+                var item = {
+                    data: task,
+                    priority: priority,
+                    callback: typeof callback === 'function' ? callback : noop
+                };
+
+                q.tasks.splice(_binarySearch(q.tasks, item, _compareTasks) + 1, 0, item);
+
+                if (q.tasks.length === q.concurrency) {
+                    q.saturated();
+                }
+                async.setImmediate(q.process);
+            });
+        }
+
+        // Start with a normal queue
+        var q = async.queue(worker, concurrency);
+
+        // Override push to accept second parameter representing priority
+        q.push = function (data, priority, callback) {
+            _insert(q, data, priority, callback);
+        };
+
+        // Remove unshift function
+        delete q.unshift;
+
+        return q;
+    };
+
+    async.cargo = function (worker, payload) {
+        return _queue(worker, 1, payload);
+    };
+
+    function _console_fn(name) {
+        return _restParam(function (fn, args) {
+            fn.apply(null, args.concat([_restParam(function (err, args) {
+                if (typeof console === 'object') {
+                    if (err) {
+                        if (console.error) {
+                            console.error(err);
+                        }
+                    }
+                    else if (console[name]) {
+                        _arrayEach(args, function (x) {
+                            console[name](x);
+                        });
+                    }
+                }
+            })]));
+        });
+    }
+    async.log = _console_fn('log');
+    async.dir = _console_fn('dir');
+    /*async.info = _console_fn('info');
+    async.warn = _console_fn('warn');
+    async.error = _console_fn('error');*/
+
+    async.memoize = function (fn, hasher) {
+        var memo = {};
+        var queues = {};
+        var has = Object.prototype.hasOwnProperty;
+        hasher = hasher || identity;
+        var memoized = _restParam(function memoized(args) {
+            var callback = args.pop();
+            var key = hasher.apply(null, args);
+            if (has.call(memo, key)) {   
+                async.setImmediate(function () {
+                    callback.apply(null, memo[key]);
+                });
+            }
+            else if (has.call(queues, key)) {
+                queues[key].push(callback);
+            }
+            else {
+                queues[key] = [callback];
+                fn.apply(null, args.concat([_restParam(function (args) {
+                    memo[key] = args;
+                    var q = queues[key];
+                    delete queues[key];
+                    for (var i = 0, l = q.length; i < l; i++) {
+                        q[i].apply(null, args);
+                    }
+                })]));
+            }
+        });
+        memoized.memo = memo;
+        memoized.unmemoized = fn;
+        return memoized;
+    };
+
+    async.unmemoize = function (fn) {
+        return function () {
+            return (fn.unmemoized || fn).apply(null, arguments);
+        };
+    };
+
+    function _times(mapper) {
+        return function (count, iterator, callback) {
+            mapper(_range(count), iterator, callback);
+        };
+    }
+
+    async.times = _times(async.map);
+    async.timesSeries = _times(async.mapSeries);
+    async.timesLimit = function (count, limit, iterator, callback) {
+        return async.mapLimit(_range(count), limit, iterator, callback);
+    };
+
+    async.seq = function (/* functions... */) {
+        var fns = arguments;
+        return _restParam(function (args) {
+            var that = this;
+
+            var callback = args[args.length - 1];
+            if (typeof callback == 'function') {
+                args.pop();
+            } else {
+                callback = noop;
+            }
+
+            async.reduce(fns, args, function (newargs, fn, cb) {
+                fn.apply(that, newargs.concat([_restParam(function (err, nextargs) {
+                    cb(err, nextargs);
+                })]));
+            },
+            function (err, results) {
+                callback.apply(that, [err].concat(results));
+            });
+        });
+    };
+
+    async.compose = function (/* functions... */) {
+        return async.seq.apply(null, Array.prototype.reverse.call(arguments));
+    };
+
+
+    function _applyEach(eachfn) {
+        return _restParam(function(fns, args) {
+            var go = _restParam(function(args) {
+                var that = this;
+                var callback = args.pop();
+                return eachfn(fns, function (fn, _, cb) {
+                    fn.apply(that, args.concat([cb]));
+                },
+                callback);
+            });
+            if (args.length) {
+                return go.apply(this, args);
+            }
+            else {
+                return go;
+            }
+        });
+    }
+
+    async.applyEach = _applyEach(async.eachOf);
+    async.applyEachSeries = _applyEach(async.eachOfSeries);
+
+
+    async.forever = function (fn, callback) {
+        var done = only_once(callback || noop);
+        var task = ensureAsync(fn);
+        function next(err) {
+            if (err) {
+                return done(err);
+            }
+            task(next);
+        }
+        next();
+    };
+
+    function ensureAsync(fn) {
+        return _restParam(function (args) {
+            var callback = args.pop();
+            args.push(function () {
+                var innerArgs = arguments;
+                if (sync) {
+                    async.setImmediate(function () {
+                        callback.apply(null, innerArgs);
+                    });
+                } else {
+                    callback.apply(null, innerArgs);
+                }
+            });
+            var sync = true;
+            fn.apply(this, args);
+            sync = false;
+        });
+    }
+
+    async.ensureAsync = ensureAsync;
+
+    async.constant = _restParam(function(values) {
+        var args = [null].concat(values);
+        return function (callback) {
+            return callback.apply(this, args);
+        };
+    });
+
+    async.wrapSync =
+    async.asyncify = function asyncify(func) {
+        return _restParam(function (args) {
+            var callback = args.pop();
+            var result;
+            try {
+                result = func.apply(this, args);
+            } catch (e) {
+                return callback(e);
+            }
+            // if result is Promise object
+            if (_isObject(result) && typeof result.then === "function") {
+                result.then(function(value) {
+                    callback(null, value);
+                })["catch"](function(err) {
+                    callback(err.message ? err : new Error(err));
+                });
+            } else {
+                callback(null, result);
+            }
+        });
+    };
+
+    // Node.js
+    if (typeof module === 'object' && module.exports) {
+        module.exports = async;
+    }
+    // AMD / RequireJS
+    else if (typeof define === 'function' && define.amd) {
+        define([], function () {
+            return async;
+        });
+    }
+    // included directly via <script> tag
+    else {
+        root.async = async;
+    }
+
+}());
+
+}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},require("timers").setImmediate)
+},{"_process":24,"timers":59}],3:[function(require,module,exports){
 'use strict'
 
 exports.byteLength = byteLength
@@ -190,7 +1461,7 @@ function fromByteArray (uint8) {
   return parts.join('')
 }
 
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 (function (Buffer){
 /*!
  * The buffer module from node.js, for the browser.
@@ -1993,7 +3264,7 @@ var hexSliceLookupTable = (function () {
 })()
 
 }).call(this,require("buffer").Buffer)
-},{"base64-js":2,"buffer":3,"ieee754":11}],4:[function(require,module,exports){
+},{"base64-js":3,"buffer":4,"ieee754":12}],5:[function(require,module,exports){
 var objectKeys = require('object-keys');
 var isArguments = require('is-arguments');
 var is = require('object-is');
@@ -2107,7 +3378,7 @@ function objEquiv(a, b, opts) {
 
 module.exports = deepEqual;
 
-},{"is-arguments":12,"is-date-object":13,"is-regex":14,"object-is":15,"object-keys":17,"regexp.prototype.flags":27}],5:[function(require,module,exports){
+},{"is-arguments":13,"is-date-object":14,"is-regex":15,"object-is":16,"object-keys":18,"regexp.prototype.flags":28}],6:[function(require,module,exports){
 'use strict';
 
 var keys = require('object-keys');
@@ -2167,7 +3438,7 @@ defineProperties.supportsDescriptors = !!supportsDescriptors;
 
 module.exports = defineProperties;
 
-},{"object-keys":17}],6:[function(require,module,exports){
+},{"object-keys":18}],7:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -2692,7 +3963,7 @@ function functionBindPolyfill(context) {
   };
 }
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 'use strict';
 
 var hasOwn = Object.prototype.hasOwnProperty;
@@ -2811,7 +4082,7 @@ module.exports = function extend() {
 	return target;
 };
 
-},{}],8:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 'use strict';
 
 /* eslint no-invalid-this: 1 */
@@ -2865,21 +4136,21 @@ module.exports = function bind(that) {
     return bound;
 };
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 'use strict';
 
 var implementation = require('./implementation');
 
 module.exports = Function.prototype.bind || implementation;
 
-},{"./implementation":8}],10:[function(require,module,exports){
+},{"./implementation":9}],11:[function(require,module,exports){
 'use strict';
 
 var bind = require('function-bind');
 
 module.exports = bind.call(Function.call, Object.prototype.hasOwnProperty);
 
-},{"function-bind":9}],11:[function(require,module,exports){
+},{"function-bind":10}],12:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = (nBytes * 8) - mLen - 1
@@ -2965,7 +4236,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 'use strict';
 
 var hasToStringTag = typeof Symbol === 'function' && typeof Symbol.toStringTag === 'symbol';
@@ -2998,7 +4269,7 @@ isStandardArguments.isLegacyArguments = isLegacyArguments; // for tests
 
 module.exports = supportsStandardArguments ? isStandardArguments : isLegacyArguments;
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 'use strict';
 
 var getDay = Date.prototype.getDay;
@@ -3020,7 +4291,7 @@ module.exports = function isDateObject(value) {
 	return hasToStringTag ? tryDateObject(value) : toStr.call(value) === dateClass;
 };
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 'use strict';
 
 var has = require('has');
@@ -3061,7 +4332,7 @@ module.exports = function isRegex(value) {
 	return tryRegexExecCall(value);
 };
 
-},{"has":10}],15:[function(require,module,exports){
+},{"has":11}],16:[function(require,module,exports){
 "use strict";
 
 /* https://people.mozilla.org/~jorendorff/es6-draft.html#sec-object.is */
@@ -3082,7 +4353,7 @@ module.exports = function is(a, b) {
 };
 
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 'use strict';
 
 var keysShim;
@@ -3206,7 +4477,7 @@ if (!Object.keys) {
 }
 module.exports = keysShim;
 
-},{"./isArguments":18}],17:[function(require,module,exports){
+},{"./isArguments":19}],18:[function(require,module,exports){
 'use strict';
 
 var slice = Array.prototype.slice;
@@ -3240,7 +4511,7 @@ keysShim.shim = function shimObjectKeys() {
 
 module.exports = keysShim;
 
-},{"./implementation":16,"./isArguments":18}],18:[function(require,module,exports){
+},{"./implementation":17,"./isArguments":19}],19:[function(require,module,exports){
 'use strict';
 
 var toStr = Object.prototype.toString;
@@ -3259,7 +4530,7 @@ module.exports = function isArguments(value) {
 	return isArgs;
 };
 
-},{}],19:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 // These methods let you build a transform function from a transformComponent
 // function for OT types like JSON0 in which operations are lists of components
 // and transforming them requires N^2 work. I find it kind of nasty that I need
@@ -3339,7 +4610,7 @@ function bootstrapTransform(type, transformComponent, checkValidOp, append) {
   };
 };
 
-},{}],20:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 // Only the JSON type is exported, because the text type is deprecated
 // otherwise. (If you want to use it somewhere, you're welcome to pull it out
 // into a separate module that json0 can depend on).
@@ -3348,7 +4619,7 @@ module.exports = {
   type: require('./json0')
 };
 
-},{"./json0":21}],21:[function(require,module,exports){
+},{"./json0":22}],22:[function(require,module,exports){
 /*
  This is the implementation of the JSON OT type.
 
@@ -4013,7 +5284,7 @@ json.registerSubtype(text);
 module.exports = json;
 
 
-},{"./bootstrapTransform":19,"./text0":22}],22:[function(require,module,exports){
+},{"./bootstrapTransform":20,"./text0":23}],23:[function(require,module,exports){
 // DEPRECATED!
 //
 // This type works, but is not exported. Its included here because the JSON0
@@ -4271,7 +5542,7 @@ text.invert = function(op) {
 
 require('./bootstrapTransform')(text, transformComponent, checkValidOp, append);
 
-},{"./bootstrapTransform":19}],23:[function(require,module,exports){
+},{"./bootstrapTransform":20}],24:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -4457,7 +5728,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 (function (Buffer){
 /*!
  * Quill Editor v1.3.7
@@ -16022,7 +17293,7 @@ module.exports = __webpack_require__(63);
 /******/ ])["default"];
 });
 }).call(this,require("buffer").Buffer)
-},{"buffer":3}],25:[function(require,module,exports){
+},{"buffer":4}],26:[function(require,module,exports){
 'use strict';
 
 /*! *****************************************************************************
@@ -16579,7 +17850,7 @@ var ReconnectingWebSocket = /** @class */ (function () {
 
 module.exports = ReconnectingWebSocket;
 
-},{}],26:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 'use strict';
 
 var toObject = Object;
@@ -16611,7 +17882,7 @@ module.exports = function flags() {
 	return result;
 };
 
-},{}],27:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 'use strict';
 
 var define = require('define-properties');
@@ -16630,7 +17901,7 @@ define(flagsBound, {
 
 module.exports = flagsBound;
 
-},{"./implementation":26,"./polyfill":28,"./shim":29,"define-properties":5}],28:[function(require,module,exports){
+},{"./implementation":27,"./polyfill":29,"./shim":30,"define-properties":6}],29:[function(require,module,exports){
 'use strict';
 
 var implementation = require('./implementation');
@@ -16652,7 +17923,7 @@ module.exports = function getPolyfill() {
 	return implementation;
 };
 
-},{"./implementation":26,"define-properties":5}],29:[function(require,module,exports){
+},{"./implementation":27,"define-properties":6}],30:[function(require,module,exports){
 'use strict';
 
 var supportsDescriptors = require('define-properties').supportsDescriptors;
@@ -16680,10 +17951,10 @@ module.exports = function shimFlags() {
 	return polyfill;
 };
 
-},{"./polyfill":28,"define-properties":5}],30:[function(require,module,exports){
+},{"./polyfill":29,"define-properties":6}],31:[function(require,module,exports){
 module.exports = require('./lib/type');
 
-},{"./lib/type":31}],31:[function(require,module,exports){
+},{"./lib/type":32}],32:[function(require,module,exports){
 var Delta = require('quill-delta');
 
 
@@ -16740,7 +18011,7 @@ module.exports = {
   }
 };
 
-},{"quill-delta":34}],32:[function(require,module,exports){
+},{"quill-delta":35}],33:[function(require,module,exports){
 /**
  * This library modifies the diff-patch-match library by Neil Fraser
  * by removing the patch and match functionality and certain advanced
@@ -17516,7 +18787,7 @@ diff.EQUAL = DIFF_EQUAL;
 
 module.exports = diff;
 
-},{}],33:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 "use strict";
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -17613,7 +18884,7 @@ var AttributeMap;
 })(AttributeMap || (AttributeMap = {}));
 exports.default = AttributeMap;
 
-},{"deep-equal":4,"extend":7}],34:[function(require,module,exports){
+},{"deep-equal":5,"extend":8}],35:[function(require,module,exports){
 "use strict";
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -18019,7 +19290,7 @@ var Delta = /** @class */ (function () {
 }());
 module.exports = Delta;
 
-},{"./AttributeMap":33,"./Op":36,"deep-equal":4,"extend":7,"fast-diff":32}],35:[function(require,module,exports){
+},{"./AttributeMap":34,"./Op":37,"deep-equal":5,"extend":8,"fast-diff":33}],36:[function(require,module,exports){
 "use strict";
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -18123,7 +19394,7 @@ var Iterator = /** @class */ (function () {
 }());
 exports.default = Iterator;
 
-},{"./Op":36}],36:[function(require,module,exports){
+},{"./Op":37}],37:[function(require,module,exports){
 "use strict";
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -18151,10 +19422,12 @@ var Op;
 })(Op || (Op = {}));
 exports.default = Op;
 
-},{"./Iterator":35}],37:[function(require,module,exports){
+},{"./Iterator":36}],38:[function(require,module,exports){
 (function (process){
 var Doc = require('./doc');
 var Query = require('./query');
+var Presence = require('./presence/presence');
+var DocPresence = require('./presence/doc-presence');
 var SnapshotVersionRequest = require('./snapshot-request/snapshot-version-request');
 var SnapshotTimestampRequest = require('./snapshot-request/snapshot-timestamp-request');
 var emitter = require('../emitter');
@@ -18200,6 +19473,9 @@ function Connection(socket) {
 
   // Map from query ID -> query object.
   this.queries = {};
+
+  // Maps from channel -> presence objects
+  this._presences = {};
 
   // Map from snapshot request ID -> snapshot request
   this._snapshotRequests = {};
@@ -18414,6 +19690,14 @@ Connection.prototype.handleMessage = function(message) {
       var doc = this.getExisting(message.c, message.d);
       if (doc) doc._handleOp(err, message);
       return;
+    case 'p':
+      return this._handlePresence(err, message);
+    case 'ps':
+      return this._handlePresenceSubscribe(err, message);
+    case 'pu':
+      return this._handlePresenceUnsubscribe(err, message);
+    case 'pr':
+      return this._handlePresenceRequest(err, message);
 
     default:
       logger.warn('Ignoring unrecognized message', message);
@@ -18497,6 +19781,10 @@ Connection.prototype._setState = function(newState, reason) {
     for (var id in docs) {
       docs[id]._onConnectionStateChanged();
     }
+  }
+  // Emit the event to all Presences
+  for (var channel in this._presences) {
+    this._presences[channel]._onConnectionStateChanged();
   }
   // Emit the event to all snapshots
   for (var id in this._snapshotRequests) {
@@ -18652,17 +19940,7 @@ Connection.prototype.get = function(collection, id) {
  * @private
  */
 Connection.prototype._destroyDoc = function(doc) {
-  var docs = this.collections[doc.collection];
-  if (!docs) return;
-
-  delete docs[doc.id];
-
-  // Delete the collection container if its empty. This could be a source of
-  // memory leaks if you slowly make a billion collections, which you probably
-  // won't do anyway, but whatever.
-  if (!util.hasKeys(docs)) {
-    delete this.collections[doc.collection];
-  }
+  util.digAndRemove(this.collections, doc.collection, doc.id);
 };
 
 Connection.prototype._addDoc = function(doc) {
@@ -18853,8 +20131,55 @@ Connection.prototype._handleSnapshotFetch = function(error, message) {
   snapshotRequest._handleResponse(error, message);
 };
 
+Connection.prototype.getPresence = function(channel) {
+  return util.digOrCreate(this._presences, channel, function() {
+    return new Presence(this, channel);
+  }.bind(this));
+};
+
+Connection.prototype.getDocPresence = function(collection, id) {
+  var channel = DocPresence.channel(collection, id);
+  return util.digOrCreate(this._presences, channel, function() {
+    return new DocPresence(this, collection, id);
+  }.bind(this));
+};
+
+Connection.prototype._sendPresenceAction = function(action, seq, presence) {
+  // Ensure the presence is registered so that it receives the reply message
+  this._addPresence(presence);
+  var message = {a: action, ch: presence.channel, seq: seq};
+  this.send(message);
+  return message.seq;
+};
+
+Connection.prototype._addPresence = function(presence) {
+  util.digOrCreate(this._presences, presence.channel, function() {
+    return presence;
+  });
+};
+
+Connection.prototype._handlePresenceSubscribe = function(error, message) {
+  var presence = util.dig(this._presences, message.ch);
+  if (presence) presence._handleSubscribe(error, message.seq);
+};
+
+Connection.prototype._handlePresenceUnsubscribe = function(error, message) {
+  var presence = util.dig(this._presences, message.ch);
+  if (presence) presence._handleUnsubscribe(error, message.seq);
+};
+
+Connection.prototype._handlePresence = function(error, message) {
+  var presence = util.dig(this._presences, message.ch);
+  if (presence) presence._receiveUpdate(error, message);
+};
+
+Connection.prototype._handlePresenceRequest = function(error, message) {
+  var presence = util.dig(this._presences, message.ch);
+  presence._broadcastAllLocalPresence(error, message);
+};
+
 }).call(this,require('_process'))
-},{"../emitter":44,"../error":45,"../logger":46,"../types":49,"../util":50,"./doc":38,"./query":40,"./snapshot-request/snapshot-timestamp-request":42,"./snapshot-request/snapshot-version-request":43,"_process":23}],38:[function(require,module,exports){
+},{"../emitter":51,"../error":52,"../logger":53,"../types":57,"../util":58,"./doc":39,"./presence/doc-presence":41,"./presence/presence":44,"./query":47,"./snapshot-request/snapshot-timestamp-request":49,"./snapshot-request/snapshot-version-request":50,"_process":24}],39:[function(require,module,exports){
 (function (process){
 var emitter = require('../emitter');
 var logger = require('../logger');
@@ -18959,6 +20284,9 @@ function Doc(connection, collection, id) {
   // the time of op submit, so it may be toggled on before submitting a
   // specifc op and toggled off afterward
   this.preventCompose = false;
+
+  this.remotePresences = {};
+  this.subscribedToPresence = false;
 }
 emitter.mixin(Doc);
 
@@ -18972,10 +20300,12 @@ Doc.prototype.destroy = function(callback) {
           return doc.emit('error', err);
         }
         doc.connection._destroyDoc(doc);
+        doc.emit('destroy');
         if (callback) callback();
       });
     } else {
       doc.connection._destroyDoc(doc);
+      doc.emit('destroy');
       if (callback) callback();
     }
   });
@@ -19418,9 +20748,9 @@ Doc.prototype._otApply = function(op, source) {
           if (transformErr) return this._hardRollback(transformErr);
         }
         // Apply the individual op component
-        this.emit('before op', componentOp.op, source);
+        this.emit('before op', componentOp.op, source, op.src);
         this.data = this.type.apply(this.data, componentOp.op);
-        this.emit('op', componentOp.op, source);
+        this.emit('op', componentOp.op, source, op.src);
       }
       // Pop whatever was submitted since we started applying this op
       this._popApplyStack(stackLength);
@@ -19429,7 +20759,7 @@ Doc.prototype._otApply = function(op, source) {
 
     // The 'before op' event enables clients to pull any necessary data out of
     // the snapshot before it gets changed
-    this.emit('before op', op.op, source);
+    this.emit('before op', op.op, source, op.src);
     // Apply the operation to the local data, mutating it in place
     this.data = this.type.apply(this.data, op.op);
     // Emit an 'op' event once the local data includes the changes from the
@@ -19437,7 +20767,7 @@ Doc.prototype._otApply = function(op, source) {
     // submission and before the server or other clients have received the op.
     // For ops from other clients, this will be after the op has been
     // committed to the database and published
-    this.emit('op', op.op, source);
+    this.emit('op', op.op, source, op.src);
     return;
   }
 
@@ -19702,6 +21032,28 @@ Doc.prototype.resume = function() {
   this.flush();
 };
 
+Doc.prototype.subscribeToPresence = function(callback) {
+  this.connection._subscribeToPresence(this.collection, this.id, function(error) {
+    if (callback) return callback(error);
+    if (error) this.emit('error', error);
+  });
+};
+
+Doc.prototype.unsubscribeFromPresence = function(callback) {
+  this.connection._unsubscribeFromPresence(this.collection, this.id, function(error) {
+    if (callback) return callback(error);
+    if (error) this.emit('error', error);
+  });
+};
+
+Doc.prototype.presences = function() {
+  return Object.keys(this.remotePresences).map(function(id) {
+    return {
+      id: id,
+      data: this.remotePresences[id]
+    };
+  }.bind(this));
+};
 
 // *** Receiving operations
 
@@ -19817,7 +21169,7 @@ function callEach(callbacks, err) {
 }
 
 }).call(this,require('_process'))
-},{"../emitter":44,"../error":45,"../logger":46,"../types":49,"_process":23}],39:[function(require,module,exports){
+},{"../emitter":51,"../error":52,"../logger":53,"../types":57,"_process":24}],40:[function(require,module,exports){
 exports.Connection = require('./connection');
 exports.Doc = require('./doc');
 exports.Error = require('../error');
@@ -19825,7 +21177,576 @@ exports.Query = require('./query');
 exports.types = require('../types');
 exports.logger = require('../logger');
 
-},{"../error":45,"../logger":46,"../types":49,"./connection":37,"./doc":38,"./query":40}],40:[function(require,module,exports){
+},{"../error":52,"../logger":53,"../types":57,"./connection":38,"./doc":39,"./query":47}],41:[function(require,module,exports){
+var Presence = require('./presence');
+var LocalDocPresence = require('./local-doc-presence');
+var RemoteDocPresence = require('./remote-doc-presence');
+
+function DocPresence(connection, collection, id) {
+  var channel = DocPresence.channel(collection, id);
+  Presence.call(this, connection, channel);
+
+  this.collection = collection;
+  this.id = id;
+}
+module.exports = DocPresence;
+
+DocPresence.prototype = Object.create(Presence.prototype);
+
+DocPresence.channel = function(collection, id) {
+  return collection + '.' + id;
+};
+
+DocPresence.prototype._createLocalPresence = function(id) {
+  return new LocalDocPresence(this, id);
+};
+
+DocPresence.prototype._createRemotePresence = function(id) {
+  return new RemoteDocPresence(this, id);
+};
+
+},{"./local-doc-presence":42,"./presence":44,"./remote-doc-presence":45}],42:[function(require,module,exports){
+var LocalPresence = require('./local-presence');
+var ShareDBError = require('../../error');
+var ERROR_CODE = ShareDBError.CODES;
+
+module.exports = LocalDocPresence;
+function LocalDocPresence(presence, presenceId) {
+  LocalPresence.call(this, presence, presenceId);
+
+  this.collection = this.presence.collection;
+  this.id = this.presence.id;
+
+  this._doc = this.connection.get(this.collection, this.id);
+  this._seq = null;
+  this._isSending = false;
+
+  this._opHandler = this._transformAgainstOp.bind(this);
+  this._createOrDelHandler = this._handleCreateOrDel.bind(this);
+  this._loadHandler = this._handleLoad.bind(this);
+  this._registerWithDoc();
+}
+
+LocalDocPresence.prototype = Object.create(LocalPresence.prototype);
+
+LocalDocPresence.prototype.submit = function(value, callback) {
+  if (!this._doc.type) {
+    var error = {
+      code: ERROR_CODE.ERR_DOC_DOES_NOT_EXIST,
+      message: 'Cannot submit presence. Document has not been created'
+    };
+    return this._callbackOrEmit(error, callback);
+  };
+
+  LocalPresence.prototype.submit.call(this, value, callback);
+};
+
+LocalDocPresence.prototype.destroy = function(callback) {
+  this._doc.removeListener('op', this._opHandler);
+  this._doc.removeListener('create', this._createOrDelHandler);
+  this._doc.removeListener('del', this._createOrDelHandler);
+  this._doc.removeListener('load', this._loadHandler);
+
+  LocalPresence.prototype.destroy.call(this, callback);
+};
+
+LocalDocPresence.prototype._sendPending = function() {
+  if (this._isSending) return;
+  this._isSending = true;
+  this._doc.whenNothingPending(function() {
+    this._isSending = false;
+    if (!this.connection.canSend) return;
+
+    this._pendingMessages.forEach(function(message) {
+      message.t = this._doc.type.uri;
+      message.v = this._doc.version;
+      this.connection.send(message);
+    }.bind(this));
+
+    this._pendingMessages = [];
+  }.bind(this));
+};
+
+LocalPresence.prototype._registerWithDoc = function() {
+  this._doc.on('op', this._opHandler);
+  this._doc.on('create', this._createOrDelHandler);
+  this._doc.on('del', this._createOrDelHandler);
+  this._doc.on('load', this._loadHandler);
+};
+
+LocalDocPresence.prototype._transformAgainstOp = function(op, source) {
+  this._pendingMessages.forEach(function(message) {
+    try {
+      message.p = this._doc.type.transformPresence(message.p, op, source);
+    } catch (error) {
+      var callback = this._getCallback(message.seq);
+      this._callbackOrEmit(error, callback);
+    }
+  }.bind(this));
+
+  try {
+    this.value = this._doc.type.transformPresence(this.value, op, source);
+  } catch (error) {
+    this.emit('error', error);
+  }
+};
+
+LocalPresence.prototype._handleCreateOrDel = function() {
+  this._pendingMessages.forEach(function(message) {
+    message.p = null;
+  });
+
+  this.value = null;
+};
+
+LocalPresence.prototype._handleLoad = function() {
+  this.value = null;
+  this._pendingMessages = [];
+};
+
+LocalDocPresence.prototype._message = function() {
+  var message = LocalPresence.prototype._message.call(this);
+  message.c = this.collection,
+  message.d = this.id,
+  message.v = null;
+  message.t = null;
+  return message;
+};
+
+},{"../../error":52,"./local-presence":43}],43:[function(require,module,exports){
+(function (process){
+var emitter = require('../../emitter');
+
+module.exports = LocalPresence;
+function LocalPresence(presence, presenceId) {
+  emitter.EventEmitter.call(this);
+
+  if (!presenceId || typeof presenceId !== 'string') {
+    throw new Error('LocalPresence presenceId must be a string');
+  }
+
+  this.presence = presence;
+  this.presenceId = presenceId;
+  this.connection = presence.connection;
+
+  this.value = null;
+
+  this._pendingMessages = [];
+  this._callbacksBySeq = {};
+}
+emitter.mixin(LocalPresence);
+
+LocalPresence.prototype.submit = function(value, callback) {
+  this.value = value;
+  this.send(callback);
+};
+
+LocalPresence.prototype.send = function(callback) {
+  var message = this._message();
+  this._pendingMessages.push(message);
+  this._callbacksBySeq[message.seq] = callback;
+  this._sendPending();
+};
+
+LocalPresence.prototype.destroy = function(callback) {
+  this.submit(null, function(error) {
+    if (error) return this._callbackOrEmit(error, callback);
+    delete this.presence.localPresences[this.presenceId];
+    callback();
+  }.bind(this));
+};
+
+LocalPresence.prototype._sendPending = function() {
+  if (!this.connection.canSend) return;
+  this._pendingMessages.forEach(function(message) {
+    this.connection.send(message);
+  }.bind(this));
+
+  this._pendingMessages = [];
+};
+
+LocalPresence.prototype._ack = function(error, seq) {
+  var callback = this._getCallback(seq);
+  this._callbackOrEmit(error, callback);
+};
+
+LocalPresence.prototype._message = function() {
+  return {
+    a: 'p',
+    ch: this.presence.channel,
+    id: this.presenceId,
+    p: this.value,
+    seq: this.connection.seq++
+  };
+};
+
+LocalPresence.prototype._getCallback = function(seq) {
+  var callback = this._callbacksBySeq[seq];
+  delete this._callbacksBySeq[seq];
+  return callback;
+};
+
+LocalPresence.prototype._callbackOrEmit = function(error, callback) {
+  if (callback) return process.nextTick(callback, error);
+  if (error) this.emit('error', error);
+};
+
+}).call(this,require('_process'))
+},{"../../emitter":51,"_process":24}],44:[function(require,module,exports){
+(function (process){
+var emitter = require('../../emitter');
+var LocalPresence = require('./local-presence');
+var RemotePresence = require('./remote-presence');
+var util = require('../../util');
+var async = require('async');
+
+module.exports = Presence;
+function Presence(connection, channel) {
+  emitter.EventEmitter.call(this);
+
+  if (!channel || typeof channel !== 'string') {
+    throw new Error('Presence channel must be provided');
+  }
+
+  this.connection = connection;
+  this.channel = channel;
+
+  this.wantSubscribe = false;
+  this.subscribed = false;
+  this.remotePresences = {};
+  this.localPresences = {};
+  this.seq = 1;
+
+  this._remotePresenceInstances = {};
+  this._subscriptionCallbacksBySeq = {};
+}
+emitter.mixin(Presence);
+
+Presence.prototype.subscribe = function(callback) {
+  this._sendSubscriptionAction(true, callback);
+};
+
+Presence.prototype.unsubscribe = function(callback) {
+  this._sendSubscriptionAction(false, callback);
+};
+
+Presence.prototype.create = function(id) {
+  var localPresence = this._createLocalPresence(id);
+  this.localPresences[id] = localPresence;
+  return localPresence;
+};
+
+Presence.prototype.destroy = function(callback) {
+  this.unsubscribe(function(error) {
+    if (error) return this._callbackOrEmit(error, callback);
+    var localIds = Object.keys(this.localPresences);
+    var remoteIds = Object.keys(this._remotePresenceInstances);
+    async.parallel(
+      [
+        function(next) {
+          async.each(localIds, function(presenceId, next) {
+            this.localPresences[presenceId].destroy(next);
+          }.bind(this), next);
+        }.bind(this),
+        function(next) {
+          async.each(remoteIds, function(presenceId, next) {
+            this._remotePresenceInstances[presenceId].destroy(next);
+          }.bind(this), next);
+        }.bind(this)
+      ],
+      function(error) {
+        delete this.connection._presences[this.channel];
+        this._callbackOrEmit(error, callback);
+      }.bind(this)
+    );
+  }.bind(this));
+};
+
+Presence.prototype._sendSubscriptionAction = function(wantSubscribe, callback) {
+  this.wantSubscribe = !!wantSubscribe;
+  var action = this.wantSubscribe ? 'ps' : 'pu';
+  var seq = this.seq++;
+  this._subscriptionCallbacksBySeq[seq] = callback;
+  if (this.connection.canSend) {
+    this.connection._sendPresenceAction(action, seq, this);
+  }
+};
+
+Presence.prototype._handleSubscribe = function(error, seq) {
+  if (this.wantSubscribe) this.subscribed = true;
+  var callback = this._subscriptionCallback(seq);
+  this._callbackOrEmit(error, callback);
+};
+
+Presence.prototype._handleUnsubscribe = function(error, seq) {
+  this.subscribed = false;
+  var callback = this._subscriptionCallback(seq);
+  this._callbackOrEmit(error, callback);
+};
+
+Presence.prototype._receiveUpdate = function(error, message) {
+  var localPresence = util.dig(this.localPresences, message.id);
+  if (localPresence) return localPresence._ack(error, message.seq);
+
+  if (error) return this.emit('error', error);
+  var remotePresence = util.digOrCreate(this._remotePresenceInstances, message.id, function() {
+    return this._createRemotePresence(message.id);
+  }.bind(this));
+
+  remotePresence.receiveUpdate(message);
+};
+
+Presence.prototype._updateRemotePresence = function(remotePresence) {
+  this.remotePresences[remotePresence.presenceId] = remotePresence.value;
+  if (remotePresence.value === null) this._removeRemotePresence(remotePresence.presenceId);
+  this.emit('receive', remotePresence.presenceId, remotePresence.value);
+};
+
+Presence.prototype._broadcastAllLocalPresence = function(error) {
+  if (error) return this.emit('error', error);
+  for (var id in this.localPresences) {
+    var localPresence = this.localPresences[id];
+    if (localPresence.value !== null) localPresence.send();
+  }
+};
+
+Presence.prototype._removeRemotePresence = function(id) {
+  this._remotePresenceInstances[id].destroy();
+  delete this._remotePresenceInstances[id];
+  delete this.remotePresences[id];
+};
+
+Presence.prototype._onConnectionStateChanged = function() {
+  if (!this.connection.canSend) return;
+  this._resubscribe();
+  for (var id in this.localPresences) {
+    this.localPresences[id]._sendPending();
+  }
+};
+
+Presence.prototype._resubscribe = function() {
+  var callbacks = [];
+  for (var seq in this._subscriptionCallbacksBySeq) {
+    var callback = this._subscriptionCallback(seq);
+    callbacks.push(callback);
+  }
+
+  if (!this.wantSubscribe) return this._callEachOrEmit(null, callbacks);
+
+  this.subscribe(function(error) {
+    this._callEachOrEmit(error, callbacks);
+  }.bind(this));
+};
+
+Presence.prototype._subscriptionCallback = function(seq) {
+  var callback = this._subscriptionCallbacksBySeq[seq];
+  delete this._subscriptionCallbacksBySeq[seq];
+  return callback;
+};
+
+Presence.prototype._callbackOrEmit = function(error, callback) {
+  if (callback) return process.nextTick(callback, error);
+  if (error) this.emit('error', error);
+};
+
+Presence.prototype._createLocalPresence = function(id) {
+  return new LocalPresence(this, id);
+};
+
+Presence.prototype._createRemotePresence = function(id) {
+  return new RemotePresence(this, id);
+};
+
+Presence.prototype._callEachOrEmit = function(error, callbacks) {
+  if (callbacks && callbacks.length) {
+    return callbacks.forEach(function(callback) {
+      process.nextTick(callback, error);
+    });
+  }
+
+  if (error) this.emit('error', error);
+};
+
+}).call(this,require('_process'))
+},{"../../emitter":51,"../../util":58,"./local-presence":43,"./remote-presence":46,"_process":24,"async":2}],45:[function(require,module,exports){
+var RemotePresence = require('./remote-presence');
+var ot = require('../../ot');
+
+module.exports = RemoteDocPresence;
+function RemoteDocPresence(presence, presenceId) {
+  RemotePresence.call(this, presence, presenceId);
+
+  this.collection = this.presence.collection;
+  this.id = this.presence.id;
+  this.src = null;
+
+  this._doc = this.connection.get(this.collection, this.id);
+  this._pending = null;
+  this._opCache = null;
+  this._pendingSetPending = false;
+
+  this._opHandler = this._handleOp.bind(this);
+  this._createDelHandler = this._handleCreateDel.bind(this);
+  this._loadHandler = this._handleLoad.bind(this);
+  this._registerWithDoc();
+}
+
+RemoteDocPresence.prototype = Object.create(RemotePresence.prototype);
+
+RemoteDocPresence.prototype.receiveUpdate = function(message) {
+  if (this._pending && message.seq < this._pending.seq) return;
+  this.src = message.src;
+  this._pending = message;
+  this._setPendingPresence();
+};
+
+RemoteDocPresence.prototype.destroy = function(callback) {
+  this._doc.removeListener('op', this._opHandler);
+  this._doc.removeListener('create', this._createDelHandler);
+  this._doc.removeListener('del', this._createDelHandler);
+  this._doc.removeListener('load', this._loadHandler);
+
+  RemotePresence.prototype.destroy.call(this, callback);
+};
+
+RemoteDocPresence.prototype._registerWithDoc = function() {
+  this._doc.on('op', this._opHandler);
+  this._doc.on('create', this._createDelHandler);
+  this._doc.on('del', this._createDelHandler);
+  this._doc.on('load', this._loadHandler);
+};
+
+RemoteDocPresence.prototype._setPendingPresence = function() {
+  if (this._pendingSetPending) return;
+  this._pendingSetPending = true;
+  this._doc.whenNothingPending(function() {
+    this._pendingSetPending = false;
+    if (!this._pending) return;
+    if (this._pending.seq < this.seq) return this._pending = null;
+
+    if (this._pending.v > this._doc.version) {
+      return this._doc.fetch();
+    }
+
+    if (!this._catchUpStalePresence()) return;
+
+    this.value = this._pending.p;
+    this.seq = this._pending.seq;
+    this._pending = null;
+    this.presence._updateRemotePresence(this);
+  }.bind(this));
+};
+
+RemoteDocPresence.prototype._handleOp = function(op, source, connectionId) {
+  var isOwnOp = connectionId === this.src;
+  this._transformAgainstOp(op, isOwnOp);
+  this._cacheOp(op, isOwnOp);
+  this._setPendingPresence();
+};
+
+RemotePresence.prototype._handleCreateDel = function() {
+  this._cacheOp(null);
+  this._setPendingPresence();
+};
+
+RemotePresence.prototype._handleLoad = function() {
+  this.value = null;
+  this._callbacksBySeq = {};
+  this._pending = null;
+  this._opCache = null;
+  this.presence._updateRemotePresence(this);
+};
+
+RemoteDocPresence.prototype._transformAgainstOp = function(op, isOwnOp) {
+  if (!this.value) return;
+
+  try {
+    this.value = this._doc.type.transformPresence(this.value, op, isOwnOp);
+  } catch (error) {
+    return this.presence.emit('error', error);
+  }
+  this.presence._updateRemotePresence(this);
+};
+
+RemoteDocPresence.prototype._catchUpStalePresence = function() {
+  if (this._pending.v >= this._doc.version) return true;
+
+  if (!this._opCache) {
+    this._startCachingOps();
+    this._doc.fetch();
+    // We're already subscribed, but we send another subscribe message
+    // to force presence updates from other clients
+    this.presence.subscribe();
+    return false;
+  }
+
+  while (this._opCache[this._pending.v]) {
+    var item = this._opCache[this._pending.v];
+    var op = item.op;
+    var isOwnOp = item.isOwnOp;
+    // We use a null op to signify a create or a delete operation. In both
+    // cases we just want to reset the presence (which doesn't make sense
+    // in a new document), so just set the presence to null.
+    if (op === null) {
+      this._pending.p = null;
+      this._pending.v++;
+    } else {
+      ot.transformPresence(this._pending, op, isOwnOp);
+    }
+  }
+
+  var hasCaughtUp = this._pending.v >= this._doc.version;
+  if (hasCaughtUp) {
+    this._stopCachingOps();
+  }
+
+  return hasCaughtUp;
+};
+
+RemoteDocPresence.prototype._startCachingOps = function() {
+  this._opCache = [];
+};
+
+RemoteDocPresence.prototype._stopCachingOps = function() {
+  this._opCache = null;
+};
+
+RemoteDocPresence.prototype._cacheOp = function(op, isOwnOp) {
+  if (this._opCache) {
+    op = op ? {op: op} : null;
+    // Subtract 1 from the current doc version, because an op with v3
+    // should be read as the op that takes a doc from v3 -> v4
+    this._opCache[this._doc.version - 1] = {op: op, isOwnOp: isOwnOp};
+  }
+};
+
+},{"../../ot":55,"./remote-presence":46}],46:[function(require,module,exports){
+(function (process){
+module.exports = RemotePresence;
+function RemotePresence(presence, presenceId) {
+  this.presence = presence;
+  this.presenceId = presenceId;
+  this.connection = this.presence.connection;
+
+  this.value = null;
+  this.seq = 0;
+}
+
+RemotePresence.prototype.receiveUpdate = function(message) {
+  if (message.seq < this.seq) return;
+  this.value = message.p;
+  this.seq = message.seq;
+  this.presence._updateRemotePresence(this);
+};
+
+RemotePresence.prototype.destroy = function(callback) {
+  delete this.presence._remotePresenceInstances[this.presenceId];
+  delete this.presence.remotePresences[this.presenceId];
+  if (callback) process.nextTick(callback);
+};
+
+}).call(this,require('_process'))
+},{"_process":24}],47:[function(require,module,exports){
 (function (process){
 var emitter = require('../emitter');
 
@@ -20027,7 +21948,7 @@ Query.prototype._handleExtra = function(extra) {
 };
 
 }).call(this,require('_process'))
-},{"../emitter":44,"_process":23}],41:[function(require,module,exports){
+},{"../emitter":51,"_process":24}],48:[function(require,module,exports){
 var Snapshot = require('../../snapshot');
 var emitter = require('../../emitter');
 
@@ -20083,7 +22004,7 @@ SnapshotRequest.prototype._handleResponse = function(error, message) {
   this.callback(null, snapshot);
 };
 
-},{"../../emitter":44,"../../snapshot":48}],42:[function(require,module,exports){
+},{"../../emitter":51,"../../snapshot":56}],49:[function(require,module,exports){
 var SnapshotRequest = require('./snapshot-request');
 var util = require('../../util');
 
@@ -20111,7 +22032,7 @@ SnapshotTimestampRequest.prototype._message = function() {
   };
 };
 
-},{"../../util":50,"./snapshot-request":41}],43:[function(require,module,exports){
+},{"../../util":58,"./snapshot-request":48}],50:[function(require,module,exports){
 var SnapshotRequest = require('./snapshot-request');
 var util = require('../../util');
 
@@ -20139,7 +22060,7 @@ SnapshotVersionRequest.prototype._message = function() {
   };
 };
 
-},{"../../util":50,"./snapshot-request":41}],44:[function(require,module,exports){
+},{"../../util":58,"./snapshot-request":48}],51:[function(require,module,exports){
 var EventEmitter = require('events').EventEmitter;
 
 exports.EventEmitter = EventEmitter;
@@ -20151,7 +22072,7 @@ function mixin(Constructor) {
   }
 }
 
-},{"events":6}],45:[function(require,module,exports){
+},{"events":7}],52:[function(require,module,exports){
 function ShareDBError(code, message) {
   this.code = code;
   this.message = message || '';
@@ -20193,21 +22114,23 @@ ShareDBError.CODES = {
   ERR_OP_VERSION_NEWER_THAN_CURRENT_SNAPSHOT: 'ERR_OP_VERSION_NEWER_THAN_CURRENT_SNAPSHOT',
   ERR_OT_OP_BADLY_FORMED: 'ERR_OT_OP_BADLY_FORMED',
   ERR_OT_OP_NOT_PROVIDED: 'ERR_OT_OP_NOT_PROVIDED',
+  ERR_PRESENCE_TRANSFORM_FAILED: 'ERR_PRESENCE_TRANSFORM_FAILED',
   ERR_PROTOCOL_VERSION_NOT_SUPPORTED: 'ERR_PROTOCOL_VERSION_NOT_SUPPORTED',
   ERR_QUERY_EMITTER_LISTENER_NOT_ASSIGNED: 'ERR_QUERY_EMITTER_LISTENER_NOT_ASSIGNED',
   ERR_SUBMIT_TRANSFORM_OPS_NOT_FOUND: 'ERR_SUBMIT_TRANSFORM_OPS_NOT_FOUND',
   ERR_TYPE_CANNOT_BE_PROJECTED: 'ERR_TYPE_CANNOT_BE_PROJECTED',
+  ERR_TYPE_DOES_NOT_SUPPORT_PRESENCE: 'ERR_TYPE_DOES_NOT_SUPPORT_PRESENCE',
   ERR_UNKNOWN_ERROR: 'ERR_UNKNOWN_ERROR'
 };
 
 module.exports = ShareDBError;
 
-},{}],46:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 var Logger = require('./logger');
 var logger = new Logger();
 module.exports = logger;
 
-},{"./logger":47}],47:[function(require,module,exports){
+},{"./logger":54}],54:[function(require,module,exports){
 var SUPPORTED_METHODS = [
   'info',
   'warn',
@@ -20235,7 +22158,227 @@ Logger.prototype.setMethods = function(overrides) {
   });
 };
 
-},{}],48:[function(require,module,exports){
+},{}],55:[function(require,module,exports){
+// This contains the master OT functions for the database. They look like
+// ot-types style operational transform functions, but they're a bit different.
+// These functions understand versions and can deal with out of bound create &
+// delete operations.
+
+var types = require('./types').map;
+var ShareDBError = require('./error');
+var util = require('./util');
+
+var ERROR_CODE = ShareDBError.CODES;
+
+// Returns an error string on failure. Rockin' it C style.
+exports.checkOp = function(op) {
+  if (op == null || typeof op !== 'object') {
+    return new ShareDBError(ERROR_CODE.ERR_OT_OP_BADLY_FORMED, 'Op must be an object');
+  }
+
+  if (op.create != null) {
+    if (typeof op.create !== 'object') {
+      return new ShareDBError(ERROR_CODE.ERR_OT_OP_BADLY_FORMED, 'Create data must be an object');
+    }
+    var typeName = op.create.type;
+    if (typeof typeName !== 'string') {
+      return new ShareDBError(ERROR_CODE.ERR_OT_OP_BADLY_FORMED, 'Missing create type');
+    }
+    var type = types[typeName];
+    if (type == null || typeof type !== 'object') {
+      return new ShareDBError(ERROR_CODE.ERR_DOC_TYPE_NOT_RECOGNIZED, 'Unknown type');
+    }
+  } else if (op.del != null) {
+    if (op.del !== true) return new ShareDBError(ERROR_CODE.ERR_OT_OP_BADLY_FORMED, 'del value must be true');
+  } else if (op.op == null) {
+    return new ShareDBError(ERROR_CODE.ERR_OT_OP_BADLY_FORMED, 'Missing op, create, or del');
+  }
+
+  if (op.src != null && typeof op.src !== 'string') {
+    return new ShareDBError(ERROR_CODE.ERR_OT_OP_BADLY_FORMED, 'src must be a string');
+  }
+  if (op.seq != null && typeof op.seq !== 'number') {
+    return new ShareDBError(ERROR_CODE.ERR_OT_OP_BADLY_FORMED, 'seq must be a string');
+  }
+  if (
+    (op.src == null && op.seq != null) ||
+    (op.src != null && op.seq == null)
+  ) {
+    return new ShareDBError(ERROR_CODE.ERR_OT_OP_BADLY_FORMED, 'Both src and seq must be set together');
+  }
+
+  if (op.m != null && typeof op.m !== 'object') {
+    return new ShareDBError(ERROR_CODE.ERR_OT_OP_BADLY_FORMED, 'op.m must be an object or null');
+  }
+};
+
+// Takes in a string (type name or URI) and returns the normalized name (uri)
+exports.normalizeType = function(typeName) {
+  return types[typeName] && types[typeName].uri;
+};
+
+// This is the super apply function that takes in snapshot data (including the
+// type) and edits it in-place. Returns an error or null for success.
+exports.apply = function(snapshot, op) {
+  if (typeof snapshot !== 'object') {
+    return new ShareDBError(ERROR_CODE.ERR_APPLY_SNAPSHOT_NOT_PROVIDED, 'Missing snapshot');
+  }
+  if (snapshot.v != null && op.v != null && snapshot.v !== op.v) {
+    return new ShareDBError(ERROR_CODE.ERR_APPLY_OP_VERSION_DOES_NOT_MATCH_SNAPSHOT, 'Version mismatch');
+  }
+
+  // Create operation
+  if (op.create) {
+    if (snapshot.type) return new ShareDBError(ERROR_CODE.ERR_DOC_ALREADY_CREATED, 'Document already exists');
+
+    // The document doesn't exist, although it might have once existed
+    var create = op.create;
+    var type = types[create.type];
+    if (!type) return new ShareDBError(ERROR_CODE.ERR_DOC_TYPE_NOT_RECOGNIZED, 'Unknown type');
+
+    try {
+      snapshot.data = type.create(create.data);
+      snapshot.type = type.uri;
+      snapshot.v++;
+    } catch (err) {
+      return err;
+    }
+
+  // Delete operation
+  } else if (op.del) {
+    snapshot.data = undefined;
+    snapshot.type = null;
+    snapshot.v++;
+
+  // Edit operation
+  } else if (op.op) {
+    var err = applyOpEdit(snapshot, op.op);
+    if (err) return err;
+    snapshot.v++;
+
+  // No-op, and we don't have to do anything
+  } else {
+    snapshot.v++;
+  }
+};
+
+function applyOpEdit(snapshot, edit) {
+  if (!snapshot.type) return new ShareDBError(ERROR_CODE.ERR_DOC_DOES_NOT_EXIST, 'Document does not exist');
+
+  if (edit == null) return new ShareDBError(ERROR_CODE.ERR_OT_OP_NOT_PROVIDED, 'Missing op');
+  var type = types[snapshot.type];
+  if (!type) return new ShareDBError(ERROR_CODE.ERR_DOC_TYPE_NOT_RECOGNIZED, 'Unknown type');
+
+  try {
+    snapshot.data = type.apply(snapshot.data, edit);
+  } catch (err) {
+    return err;
+  }
+}
+
+exports.transform = function(type, op, appliedOp) {
+  // There are 16 cases this function needs to deal with - which are all the
+  // combinations of create/delete/op/noop from both op and appliedOp
+  if (op.v != null && op.v !== appliedOp.v) {
+    return new ShareDBError(ERROR_CODE.ERR_OP_VERSION_MISMATCH_DURING_TRANSFORM, 'Version mismatch');
+  }
+
+  if (appliedOp.del) {
+    if (op.create || op.op) {
+      return new ShareDBError(ERROR_CODE.ERR_DOC_WAS_DELETED, 'Document was deleted');
+    }
+  } else if (
+    (appliedOp.create && (op.op || op.create || op.del)) ||
+    (appliedOp.op && op.create)
+  ) {
+    // If appliedOp.create is not true, appliedOp contains an op - which
+    // also means the document exists remotely.
+    return new ShareDBError(ERROR_CODE.ERR_DOC_ALREADY_CREATED, 'Document was created remotely');
+  } else if (appliedOp.op && op.op) {
+    // If we reach here, they both have a .op property.
+    if (!type) return new ShareDBError(ERROR_CODE.ERR_DOC_DOES_NOT_EXIST, 'Document does not exist');
+
+    if (typeof type === 'string') {
+      type = types[type];
+      if (!type) return new ShareDBError(ERROR_CODE.ERR_DOC_TYPE_NOT_RECOGNIZED, 'Unknown type');
+    }
+
+    try {
+      op.op = type.transform(op.op, appliedOp.op, 'left');
+    } catch (err) {
+      return err;
+    }
+  }
+
+  if (op.v != null) op.v++;
+};
+
+/**
+ * Apply an array of ops to the provided snapshot.
+ *
+ * @param snapshot - a Snapshot object which will be mutated by the provided ops
+ * @param ops - an array of ops to apply to the snapshot
+ * @return an error object if applicable
+ */
+exports.applyOps = function(snapshot, ops) {
+  var type = null;
+
+  if (snapshot.type) {
+    type = types[snapshot.type];
+    if (!type) return new ShareDBError(ERROR_CODE.ERR_DOC_TYPE_NOT_RECOGNIZED, 'Unknown type');
+  }
+
+  for (var index = 0; index < ops.length; index++) {
+    var op = ops[index];
+
+    snapshot.v = op.v + 1;
+
+    if (op.create) {
+      type = types[op.create.type];
+      if (!type) return new ShareDBError(ERROR_CODE.ERR_DOC_TYPE_NOT_RECOGNIZED, 'Unknown type');
+      snapshot.data = type.create(op.create.data);
+      snapshot.type = type.uri;
+    } else if (op.del) {
+      snapshot.data = undefined;
+      type = null;
+      snapshot.type = null;
+    } else {
+      snapshot.data = type.apply(snapshot.data, op.op);
+    }
+  }
+};
+
+exports.transformPresence = function(presence, op, isOwnOp) {
+  var opError = this.checkOp(op);
+  if (opError) return opError;
+
+  var type = presence.t;
+  if (typeof type === 'string') {
+    type = types[type];
+  }
+  if (!type) return {code: ERROR_CODE.ERR_DOC_TYPE_NOT_RECOGNIZED, message: 'Unknown type'};
+  if (!util.supportsPresence(type)) {
+    return {code: ERROR_CODE.ERR_TYPE_DOES_NOT_SUPPORT_PRESENCE, message: 'Type does not support presence'};
+  }
+
+  if (op.create || op.del) {
+    presence.p = null;
+    presence.v++;
+    return;
+  }
+
+  try {
+    presence.p = presence.p === null ?
+      null :
+      type.transformPresence(presence.p, op.op, isOwnOp);
+  } catch (error) {
+    return {code: ERROR_CODE.ERR_PRESENCE_TRANSFORM_FAILED, message: error.message || error};
+  }
+
+  presence.v++;
+};
+
+},{"./error":52,"./types":57,"./util":58}],56:[function(require,module,exports){
 module.exports = Snapshot;
 function Snapshot(id, version, type, data, meta) {
   this.id = id;
@@ -20245,7 +22388,7 @@ function Snapshot(id, version, type, data, meta) {
   this.m = meta;
 }
 
-},{}],49:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 
 exports.defaultType = require('ot-json0').type;
 
@@ -20258,7 +22401,7 @@ exports.register = function(type) {
 
 exports.register(exports.defaultType);
 
-},{"ot-json0":20}],50:[function(require,module,exports){
+},{"ot-json0":21}],58:[function(require,module,exports){
 
 exports.doNothing = doNothing;
 function doNothing() {}
@@ -20284,4 +22427,125 @@ exports.isValidTimestamp = function(timestamp) {
   return exports.isValidVersion(timestamp);
 };
 
-},{}]},{},[1]);
+exports.dig = function() {
+  var obj = arguments[0];
+  for (var i = 1; i < arguments.length; i++) {
+    var key = arguments[i];
+    obj = obj[key] || (i === arguments.length - 1 ? undefined : {});
+  }
+  return obj;
+};
+
+exports.digOrCreate = function() {
+  var obj = arguments[0];
+  var createCallback = arguments[arguments.length - 1];
+  for (var i = 1; i < arguments.length - 1; i++) {
+    var key = arguments[i];
+    obj = obj[key] ||
+      (obj[key] = i === arguments.length - 2 ? createCallback() : {});
+  }
+  return obj;
+};
+
+exports.digAndRemove = function() {
+  var obj = arguments[0];
+  var objects = [obj];
+  for (var i = 1; i < arguments.length - 1; i++) {
+    var key = arguments[i];
+    if (!obj.hasOwnProperty(key)) break;
+    obj = obj[key];
+    objects.push(obj);
+  };
+
+  for (var i = objects.length - 1; i >= 0; i--) {
+    var parent = objects[i];
+    var key = arguments[i + 1];
+    var child = parent[key];
+    if (i === objects.length - 1 || !exports.hasKeys(child)) delete parent[key];
+  }
+};
+
+exports.supportsPresence = function(type) {
+  return type && typeof type.transformPresence === 'function';
+};
+
+},{}],59:[function(require,module,exports){
+(function (setImmediate,clearImmediate){
+var nextTick = require('process/browser.js').nextTick;
+var apply = Function.prototype.apply;
+var slice = Array.prototype.slice;
+var immediateIds = {};
+var nextImmediateId = 0;
+
+// DOM APIs, for completeness
+
+exports.setTimeout = function() {
+  return new Timeout(apply.call(setTimeout, window, arguments), clearTimeout);
+};
+exports.setInterval = function() {
+  return new Timeout(apply.call(setInterval, window, arguments), clearInterval);
+};
+exports.clearTimeout =
+exports.clearInterval = function(timeout) { timeout.close(); };
+
+function Timeout(id, clearFn) {
+  this._id = id;
+  this._clearFn = clearFn;
+}
+Timeout.prototype.unref = Timeout.prototype.ref = function() {};
+Timeout.prototype.close = function() {
+  this._clearFn.call(window, this._id);
+};
+
+// Does not start the time, just sets up the members needed.
+exports.enroll = function(item, msecs) {
+  clearTimeout(item._idleTimeoutId);
+  item._idleTimeout = msecs;
+};
+
+exports.unenroll = function(item) {
+  clearTimeout(item._idleTimeoutId);
+  item._idleTimeout = -1;
+};
+
+exports._unrefActive = exports.active = function(item) {
+  clearTimeout(item._idleTimeoutId);
+
+  var msecs = item._idleTimeout;
+  if (msecs >= 0) {
+    item._idleTimeoutId = setTimeout(function onTimeout() {
+      if (item._onTimeout)
+        item._onTimeout();
+    }, msecs);
+  }
+};
+
+// That's not how node.js implements it but the exposed api is the same.
+exports.setImmediate = typeof setImmediate === "function" ? setImmediate : function(fn) {
+  var id = nextImmediateId++;
+  var args = arguments.length < 2 ? false : slice.call(arguments, 1);
+
+  immediateIds[id] = true;
+
+  nextTick(function onNextTick() {
+    if (immediateIds[id]) {
+      // fn.call() is faster so we optimize for the common use-case
+      // @see http://jsperf.com/call-apply-segu
+      if (args) {
+        fn.apply(null, args);
+      } else {
+        fn.call(null);
+      }
+      // Prevent ids from leaking
+      exports.clearImmediate(id);
+    }
+  });
+
+  return id;
+};
+
+exports.clearImmediate = typeof clearImmediate === "function" ? clearImmediate : function(id) {
+  delete immediateIds[id];
+};
+}).call(this,require("timers").setImmediate,require("timers").clearImmediate)
+},{"process/browser.js":24,"timers":59}]},{},[1]);
