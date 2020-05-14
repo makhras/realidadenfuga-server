@@ -17,9 +17,10 @@ function startServer() {
   // Create a web server to serve files and listen to WebSocket connections
   var app = express();
   // app.use(express.static('static'));
-  app.use(express.json());
-  app.use(express.static('node_modules/quill/dist'));
   app.use(cors({origin:true}))
+  app.use(express.json());
+  app.use(express.static('public'));
+  app.use(express.static('node_modules/quill/dist'));
   var server = http.createServer(app);
 
   var wss = new WebSocket.Server({server: server});
