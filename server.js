@@ -15,17 +15,49 @@ startServer();
 
 // Create initial document then fire callback
 
+function getIdeas (request, response) {
+  console.log('GETTING IDEAS..//..//..//..//..');
+  let connection = backend.connect()
+  let doc = connection.get('ideas', 'lluvia')
+  doc.fetch(err=>{
+    if (err) throw err
+    if (doc.type===null) {
+      console.log('Oops made a doc: ', doc);
+      doc.create({ideas: []})
+      return;
+    } else {
+      console.log('DOC! ', doc.data.list);
+    }
+  })
+  response.send('All is well.')
+}
+
+function getScript(request, response) {
+  console.log('GETTING SCRIPT..---..---..---..---..');
+  
+  var connection = backend.connect();
+  var doc = connection.get('temporada1', 'episodio1');
+  doc.fetch(function(err) {
+    if (err) throw err;
+    if (doc.type === null) {
+      doc.create([{insert: 'Hi!'}], 'rich-text');
+      return;
+    }
+  });
+  response.send('DATABASED SCRIPT!!!')
+}
+
 function startServer() {
   // Create a web server to serve files and listen to WebSocket connections
+  var allowCrossDomain = function(req, res, next) {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With');
+    next();
+  };
   var app = express();
   // app.use(express.static('static'));
-  app.all('*', function(req, res, next) {
-    var origin = req.get('origin'); 
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header("Access-Control-Allow-Headers", "X-Requested-With");
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
-    next();
-  });
+  app.use(allowCrossDomain)
   app.use(cors({origin:true}))
   app.use(express.json());
   app.use(express.static('public'));
@@ -37,43 +69,11 @@ function startServer() {
     var stream = new WebSocketJSONStream(ws);
     backend.listen(stream);
   });
-  
-  app.get('/lluvia', cors(), getIdeas)
 
-  function getIdeas (request, response) {
-    console.log('GETTING IDEAS..//..//..//..//..');
-    let connection = backend.connect()
-    let doc = connection.get('ideas', 'lluvia')
-    doc.fetch(err=>{
-      if (err) throw err
-      if (doc.type===null) {
-        console.log('Oops made a doc: ', doc);
-        doc.create({ideas: []})
-        return;
-      } else {
-        console.log('DOC! ', doc.data.list);
-      }
-    })
-    response.send('All is well.')
-  }
+  app.get('/lluvia', cors(), getIdeas)
 
   // app.get('/:temporada/:episodio', cors(), getScript)
   app.get('/guion', cors(), getScript)
-
-  function getScript(request, response) {
-    console.log('GETTING SCRIPT..---..---..---..---..');
-    
-    var connection = backend.connect();
-    var doc = connection.get('temporada1', 'episodio1');
-    doc.fetch(function(err) {
-      if (err) throw err;
-      if (doc.type === null) {
-        doc.create([{insert: 'Hi!'}], 'rich-text');
-        return;
-      }
-    });
-    response.send('DATABASED SCRIPT!!!')
-  }
 
   server.listen(8083);
   console.log('Listening on http://localhost:8083');
