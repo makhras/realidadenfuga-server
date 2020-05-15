@@ -15,23 +15,23 @@ startServer();
 
 // Create initial document then fire callback
 
-function getIdeas (request, response) {
-  console.log('GETTING IDEAS..//..//..//..//..');
-  let connection = backend.connect()
-  let doc = connection.get('ideas', 'lluvia')
-  doc.fetch(err=>{
-    if (err) throw err
-    if (doc.type===null) {
-      console.log('Oops made a doc: ', doc);
-      // doc.create({list: [{idea: 'Primera idea...', order: 0}]})
-      doc.create({list: [{idea: 'Primera idea...', order: 0}]})
-      return;
-    } else {
-      console.log('DOC! ', doc.data);
-    }
-  })
-  response.send('All is well.')
-}
+// function getIdeas (request, response) {
+//   console.log('GETTING IDEAS..//..//..//..//..');
+//   let connection = backend.connect()
+//   let doc = connection.get('ideas', 'lluvia')
+//   doc.fetch(err=>{
+//     if (err) throw err
+//     if (doc.type===null) {
+//       console.log('Oops made a doc: ', doc);
+//       // doc.create({list: [{idea: 'Primera idea...', order: 0}]})
+//       doc.create({list: [{idea: 'Primera idea...', order: 0}]})
+//       return;
+//     } else {
+//       console.log('DOC! ', doc.data);
+//     }
+//   })
+//   response.send('All is well.')
+// }
 
 function getScript(request, response) {
   console.log('GETTING SCRIPT..---..---..---..---..');
@@ -65,7 +65,7 @@ function startServer() {
   //   next();
   // });
   app.use(express.json());
-  // app.use(cors())
+  app.use(cors({origin:true}))
   app.use(express.static('public/pwa'));
   app.use(express.static('node_modules/quill/dist'));
   var server = http.createServer(app);
@@ -76,7 +76,7 @@ function startServer() {
     backend.listen(stream);
   });
 
-  app.get('/lluvia', cors(), getIdeas)
+  // app.get('/lluvia', cors(), getIdeas)
 
   // app.get('/:temporada/:episodio', cors(), getScript)
   app.get('/guion', cors(), getScript)
