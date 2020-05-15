@@ -1,3 +1,5 @@
+
+
 var http = require('http');
 var cors = require('cors')
 var express = require('express');
@@ -17,6 +19,13 @@ function startServer() {
   // Create a web server to serve files and listen to WebSocket connections
   var app = express();
   // app.use(express.static('static'));
+  app.all('*', function(req, res, next) {
+    var origin = req.get('origin'); 
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header("Access-Control-Allow-Headers", "X-Requested-With");
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    next();
+  });
   app.use(cors({origin:true}))
   app.use(express.json());
   app.use(express.static('public'));
