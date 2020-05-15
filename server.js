@@ -46,14 +46,14 @@ function getScript(request, response) {
 }
 
 function startServer() {
-  var allowCrossDomain = function(req, res, next) {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With');
-    next();
-  };
+  // var allowCrossDomain = function(req, res, next) {
+  //   res.header('Access-Control-Allow-Origin', '*');
+  //   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
+  //   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With');
+  //   next();
+  // };
   var app = express();
-  app.use(allowCrossDomain)
+  // app.use(allowCrossDomain)
   // app.use(function(req, res, next) {
 
   //   res.header("Access-Control-Allow-Origin", "https://realidadenfuga.web.app"); // update to match the domain you will make the request from
