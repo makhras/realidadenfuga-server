@@ -30,20 +30,6 @@ startServer();
 //   response.send('All is well.')
 // }
 
-function getScript(request, response) {
-  console.log('GETTING SCRIPT..---..---..---..---..');
-  
-  var connection = backend.connect();
-  var doc = connection.get('temporada1', 'episodio1');
-  doc.fetch(function(err) {
-    if (err) throw err;
-    if (doc.type === null) {
-      doc.create([{insert: 'INT/EXT - '},{insert: '\n', attributes: {scriptScene: { type: 'script' }}}], 'rich-text');
-      return;
-    }
-  });
-  response.send('DATABASED SCRIPT!!!')
-}
 
 function startServer() {
   // var allowCrossDomain = function(req, res, next) {
@@ -61,9 +47,9 @@ function startServer() {
   //   next();
   // });
   app.use(express.json());
-  app.use(cors({origin:true}))
   app.use(express.static('public/pwa'));
   app.use(express.static('node_modules/quill/dist'));
+  app.use(cors({origin:true}))
   var server = http.createServer(app);
 
   var wss = new WebSocket.Server({server: server});
@@ -75,6 +61,20 @@ function startServer() {
   // app.get('/lluvia', cors(), getIdeas)
 
   app.get('/guion', cors(), getScript)
+  function getScript(request, response) {
+    console.log('GETTING SCRIPT..---..---..---..---..');
+    
+    var connection = backend.connect();
+    var doc = connection.get('temporada1', 'episodio1');
+    doc.fetch(function(err) {
+      if (err) throw err;
+      if (doc.type === null) {
+        doc.create([{insert: 'INT/EXT - '},{insert: '\n', attributes: {scriptScene: { type: 'script' }}}], 'rich-text');
+        return;
+      }
+    });
+    response.send('DATABASED SCRIPT!!!')
+  }
 
   server.listen(8083);
   console.log('Listening on http://localhost:8083');
