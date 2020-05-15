@@ -14,7 +14,7 @@
 importScripts("https://storage.googleapis.com/workbox-cdn/releases/4.3.1/workbox-sw.js");
 
 importScripts(
-  "/precache-manifest.490de64198e2e324d4c0ebeaecf7d2c7.js"
+  "/precache-manifest.8378ebdef3804088d1c060be5d910cfc.js"
 );
 
 workbox.core.setCacheNameDetails({prefix: "realidadenfu.ga"});
