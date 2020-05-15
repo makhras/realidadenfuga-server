@@ -23,7 +23,7 @@ function getIdeas (request, response) {
     if (err) throw err
     if (doc.type===null) {
       console.log('Oops made a doc: ', doc);
-      doc.create({ideas: []})
+      doc.create({list: [{idea: 'Primera idea...', order: 0}]})
       return;
     } else {
       console.log('DOC! ', doc.data.list);
@@ -40,7 +40,7 @@ function getScript(request, response) {
   doc.fetch(function(err) {
     if (err) throw err;
     if (doc.type === null) {
-      doc.create([{insert: 'Hi!'}], 'rich-text');
+      doc.create([{insert: 'INT/EXT - '},{insert: '\n', attributes: {scriptScene: { type: 'script' }}}], 'rich-text');
       return;
     }
   });
@@ -49,17 +49,17 @@ function getScript(request, response) {
 
 function startServer() {
   // Create a web server to serve files and listen to WebSocket connections
-  var allowCrossDomain = function(req, res, next) {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With');
-    next();
-  };
+  // var allowCrossDomain = function(req, res, next) {
+  //   res.header('Access-Control-Allow-Origin', '*');
+  //   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
+  //   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With');
+  //   next();
+  // };
   var app = express();
   // app.use(express.static('static'));
-  app.use(allowCrossDomain)
-  app.use(cors({origin:true}))
+  // app.use(allowCrossDomain)
   app.use(express.json());
+  app.use(cors({origin:true}))
   app.use(express.static('public'));
   app.use(express.static('node_modules/quill/dist'));
   var server = http.createServer(app);
