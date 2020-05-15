@@ -47,7 +47,7 @@ function startServer() {
   //   next();
   // });
   app.use(express.json());
-  app.use(express.static('public'));
+  app.use(express.static('public/pwa'));
   app.use(express.static('node_modules/quill/dist'));
   app.use(cors({origin:true}))
   var server = http.createServer(app);
