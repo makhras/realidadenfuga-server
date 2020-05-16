@@ -4,7 +4,7 @@ var ShareDB = require('sharedb');
 var richText = require('rich-text');
 var WebSocket = require('ws');
 var WebSocketJSONStream = require('@teamwork/websocket-json-stream');
-import firebase from 'firebase'
+var firebase = require('firebase')
 
 
 ShareDB.types.register(richText.type);
