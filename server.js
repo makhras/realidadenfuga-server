@@ -18,7 +18,8 @@ function getScript(callback) {
   doc.fetch(function(err) {
     if (err) throw err;
     if (doc.type === null) {
-      doc.create([{insert: '\nESC'}, {attributes: {scriptScene: {type: 'script'}}}, {insert: '\n'}], 'rich-text', callback);
+      // doc.create([{insert: '\n \n ESC'}, {attributes: {scriptScene: {type: 'script'}}}, {insert: '\n'}], 'rich-text', callback);
+      doc.create([{insert: 'ESCENA'}], 'rich-text', callback);
       return;
     }
   });
@@ -55,7 +56,7 @@ function startServer() {
   getScript();
   getIdeas();
 
-  const port = process.env.PORT || 8080
+  const port = process.env.PORT || 8083
   server.listen(port);
   console.log('Listening on http://localhost:' + port);
 }
