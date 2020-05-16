@@ -9,10 +9,11 @@ var WebSocketJSONStream = require('@teamwork/websocket-json-stream');
 ShareDB.types.register(richText.type);
 var backend = new ShareDB();
 
-createDoc(startServer);
+startServer()
 
 // Create initial document then fire callback
-function createDoc(callback) {
+function getScript(callback) {
+  console.log('GETTING SCRIPT..--..--..--..--..');
   var connection = backend.connect();
   var doc = connection.get('temporada1', 'episodio1');
   doc.fetch(function(err) {
@@ -21,7 +22,6 @@ function createDoc(callback) {
       doc.create([{insert: 'Hi!'}], 'rich-text', callback);
       return;
     }
-    callback();
   });
 }
 
@@ -38,6 +38,7 @@ function getIdeas (request, response) {
     } else {
       console.log('DOC! ', doc.data);
     }
+    getIdeas()
   })
   // response.send('All is well.')
 }
@@ -57,7 +58,8 @@ function startServer() {
     backend.listen(stream);
   });
 
-  getIdeas()
+  getScript();
+  getIdeas();
 
   server.listen(8083);
   console.log('Listening on http://localhost:8083');
