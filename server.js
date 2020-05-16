@@ -4,12 +4,23 @@ var ShareDB = require('sharedb');
 var richText = require('rich-text');
 var WebSocket = require('ws');
 var WebSocketJSONStream = require('@teamwork/websocket-json-stream');
+import firebase from 'firebase'
 
 
 ShareDB.types.register(richText.type);
 var backend = new ShareDB();
 
 startServer()
+
+function saveScript () {
+  var saveScriptData = firebase.functions().httpsCallable('saveScriptData'); 
+
+  saveScriptData().then(function(resp) {
+    console.log('EXITO! ', resp.data.result);
+  }).catch(function(error) {
+    console.log('ERROR CALLING CLOUD FUNCTION... : ', error);
+  });
+}
 
 function getScript(callback) {
   console.log('GETTING SCRIPT..--..--..--..--..');
