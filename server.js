@@ -100,7 +100,8 @@ var WebSocket = require('ws');
 var WebSocketJSONStream = require('@teamwork/websocket-json-stream');
 
 // ShareDB.types.register(json1.type);
-var backend = new ShareDB({ enablePresence: true });
+// var backend = new ShareDB({ enablePresence: true });
+var backend = new ShareDB();
 
 
 startServer();
@@ -154,16 +155,9 @@ function startServer() {
   //    response.send(request.body);    // echo the result back
   // });
   
-  app.get('/lluvia', cors(), getEditingEpisode)
+  app.post('/lluvia', cors(), getEditingEpisode)
   
   function getEditingEpisode (request, response) {
-    // let contenido = JSON.parse(request.body.content).ops
-    // let contenido = request.body
-    // console.log('CONTENT:', typeof contenido, ' :', contenido);
-
-    // console.log('ID: ', request.params.id);
-    // createDoc({lang: request.params.lang, id: request.params.id, cont: contenido})
-    // createDoc({title: 'lluvia', cont: contenido})
     var connection = backend.connect();
     var doc = connection.get('ideas', 'lluvia');
     doc.fetch(function(err) {
@@ -173,8 +167,7 @@ function startServer() {
       if (doc.type === null) {
         // doc.create([{insert: 'Created '+ep.id+'!'}], 'ot-json1');
         console.log('NEW DOC! ', doc)
-        // doc.create(contenido, 'ot-json1');
-        doc.create(contenido);
+        doc.create({list: [{idea: 'Primera idea...', order: 0}]})
         return;
       }else {
         console.log('DOC: ', doc)
