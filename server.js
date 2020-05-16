@@ -61,8 +61,9 @@ function startServer() {
   getScript();
   getIdeas();
 
-  server.listen(8083);
-  console.log('Listening on http://localhost:8083');
+  const port = process.env.PORT || 8080
+  server.listen(port);
+  console.log('Listening on http://localhost:' + port);
 }
 
 
