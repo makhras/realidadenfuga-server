@@ -154,12 +154,13 @@ function startServer() {
   //    response.send(request.body);    // echo the result back
   // });
   
-  app.post('/lluvia', cors(), getEditingEpisode)
+  app.get('/lluvia', cors(), getEditingEpisode)
   
   function getEditingEpisode (request, response) {
     // let contenido = JSON.parse(request.body.content).ops
-    let contenido = request.body
-    console.log('CONTENT:', typeof contenido, ' :', contenido);
+    // let contenido = request.body
+    // console.log('CONTENT:', typeof contenido, ' :', contenido);
+
     // console.log('ID: ', request.params.id);
     // createDoc({lang: request.params.lang, id: request.params.id, cont: contenido})
     // createDoc({title: 'lluvia', cont: contenido})
@@ -180,6 +181,22 @@ function startServer() {
       }
     });
     response.send('Created ShareDB')
+  }
+
+  app.get('/guion', cors(), getScript)
+  function getScript(request, response) {
+    console.log('GETTING SCRIPT..---..---..---..---..');
+    
+    var connection = backend.connect();
+    var doc = connection.get('temporada1', 'episodio1');
+    doc.fetch(function(err) {
+      if (err) throw err;
+      if (doc.type === null) {
+        doc.create([{insert: 'INT/EXT - '},{insert: '\n', attributes: {scriptScene: { type: 'script' }}}], 'rich-text');
+        return;
+      }
+    });
+    response.send('DATABASED SCRIPT!!!')
   }
 
   // app.get('/newcaret/:caret', cors(), getCaretPose)
