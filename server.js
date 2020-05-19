@@ -1,7 +1,8 @@
 var http = require('http');
 var express = require('express');
 var ShareDB = require('sharedb');
-var richText = require('rich-text');
+// var richText = require('rich-text');
+var richText = require('./rich-text');
 var WebSocket = require('ws');
 var WebSocketJSONStream = require('@teamwork/websocket-json-stream');
 
@@ -43,7 +44,7 @@ function startServer() {
   app.use(express.static('static'));
   app.use(express.static('node_modules/quill/dist'));
   let server = http.createServer(app);
-  let backend = new ShareDB();
+  let backend = new ShareDB({presence: true});
 
   // Connect any incoming WebSocket connection to ShareDB
   var wss = new WebSocket.Server({server: server});
@@ -86,3 +87,4 @@ function startServer() {
   server.listen(port);
   console.log('Listening on http://localhost:' + port);
 }
+
